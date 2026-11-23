@@ -1,0 +1,32 @@
+# 构建产物
+build/
+build-*/
+cmake-build-*/
+out/
+bin/
+obj/
+*.exe
+*.pdb
+*.ilk
+*.obj
+*.tlog
+*.lastbuildstate
+*.res
+*.bmp
+*.ppm
+
+# IDE
+.vs/
+*.user
+*.suo
+CMakeSettings.json
+out/build/
+
+# ImGui 默认布局文件（本项目已禁用 io.IniFilename，双保险）
+imgui.ini
+
+# 截图/验收产物目录（dev 自测 / tester 验证 / 架构自测）
+artifacts/
+selftest_out/
+_verify*/
+_verify-*/
