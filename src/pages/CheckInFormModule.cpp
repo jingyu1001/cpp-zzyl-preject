@@ -36,6 +36,8 @@
 #include "zzyl/core/System.h"
 #include "zzyl/data/BusinessServices.h"
 #include "zzyl/render/Theme.h"
+#include "zzyl/platform/FileDialog.h"
+#include "zzyl/render/Texture.h"
 #include "zzyl/render/UiDraw.h"
 #include "zzyl/ui/Widgets.h"
 
@@ -60,6 +62,8 @@ constexpr float kRoleInputWidth = 192.0f;   // 家属姓名/电话（Web 192）
 constexpr float kRoleComboWidth = 200.0f;   // 家属关系下拉（Web 200）
 constexpr float kUploadButtonWidth = 88.0f;
 constexpr float kUploadButtonHeight = 24.0f;
+constexpr float kPhotoPreviewSize = 100.0f;   // 上传后 100x100 预览
+constexpr float kPhotoBlockHeight = kUploadButtonHeight + 8.0f + kPhotoPreviewSize;
 constexpr float kAddressHeight = 94.0f;     // 家庭住址 4 行文本域
 constexpr float kFamilyHeaderHeight = 50.0f;
 constexpr float kFamilyRowHeight = 50.0f;
@@ -138,6 +142,19 @@ struct CheckInFormState {
     int nursingLevelId = 0;
     char nursingLevelName[64] = {};
     char bedNumber[32] = {};
+    // Sprint 4 床位级联（楼层 → 房间 → 床位）
+    std::vector<data::FloorRecord> floors;
+    std::vector<data::RoomRecord> rooms;
+    std::vector<data::BedRecord> beds;
+    std::vector<data::RoomTypeRecord> roomTypes;
+    int floorIndex = -1;
+    int roomIndex = -1;
+    int bedIndex = -1;
+    int floorId = 0;
+    int roomId = 0;
+    int bedId = 0;
+    char floorName[64] = {};
+    char roomCode[32] = {};
     char deposit[16] = "3000";
     char nursingFee[16] = {};
     char bedFee[16] = {};
@@ -150,6 +167,7 @@ struct CheckInFormState {
     char thirdPartyName[32] = {};
     char thirdPartyPhone[32] = {};
     char agreementPath[128] = {};
+    char agreementFileName[128] = {};
     // 字典
     std::vector<data::NursingLevelRecord> nursingLevels;
     // 校验结果
@@ -300,6 +318,14 @@ void ResetForm(CheckInFormState& state) {
     state.families.push_back(FamilyRowState{});
     state.nursingLevelIndex = -1;
     state.nursingLevelId = 0;
+    state.rooms.clear();
+    state.beds.clear();
+    state.floorIndex = -1;
+    state.roomIndex = -1;
+    state.bedIndex = -1;
+    state.floorId = 0;
+    state.roomId = 0;
+    state.bedId = 0;
 }
 
 void EnsureNursingLevels(CheckInFormState& state, data::ICheckInService& service) {
@@ -323,8 +349,89 @@ void ApplyNursingLevel(CheckInFormState& state) {
     FormatDouble(state.nursingFee, sizeof(state.nursingFee), level.price);
 }
 
-void ApplyBedNumber(CheckInFormState& state) {
-    FormatDouble(state.bedFee, sizeof(state.bedFee), LookupBedFee(TextOf(state.bedNumber)));
+data::IFloorLayoutService* FloorLayoutService(World& world) {
+    DataServices* services = world.TryResource<DataServices>();
+    return (services != nullptr && services->floorLayout) ? services->floorLayout.get() : nullptr;
+}
+
+data::IRoomTypeService* RoomTypeService(World& world) {
+    DataServices* services = world.TryResource<DataServices>();
+    return (services != nullptr && services->roomType) ? services->roomType.get() : nullptr;
+}
+
+// 楼层/房型字典（首次进入表单时加载）
+void EnsureCascadeDictionaries(World& world, CheckInFormState& state) {
+    if (state.floors.empty()) {
+        if (data::IFloorLayoutService* layout = FloorLayoutService(world)) {
+            state.floors = layout->Floors();
+        }
+    }
+    if (state.roomTypes.empty()) {
+        if (data::IRoomTypeService* roomTypeService = RoomTypeService(world)) {
+            state.roomTypes = roomTypeService->List(data::RoomTypeQuery{});
+        }
+    }
+}
+
+void ClearBedSelection(CheckInFormState& state) {
+    state.bedIndex = -1;
+    state.bedId = 0;
+    state.bedNumber[0] = '\0';
+    state.bedFee[0] = '\0';
+}
+
+// 选楼层 → 重新加载房间，并清空房间/床位选择
+void ReloadRooms(World& world, CheckInFormState& state) {
+    state.rooms.clear();
+    state.roomIndex = -1;
+    state.roomId = 0;
+    state.roomCode[0] = '\0';
+    ClearBedSelection(state);
+    if (state.floorIndex >= 0 && state.floorIndex < static_cast<int>(state.floors.size())) {
+        const data::FloorRecord& floor = state.floors[static_cast<std::size_t>(state.floorIndex)];
+        state.floorId = floor.id;
+        CopyToBuffer(state.floorName, sizeof(state.floorName), floor.name);
+        if (data::IFloorLayoutService* layout = FloorLayoutService(world)) {
+            state.rooms = layout->Rooms(state.floorId);
+        }
+    } else {
+        state.floorId = 0;
+        state.floorName[0] = '\0';
+    }
+}
+
+// 选房间 → 重新加载床位（只列空闲床位），并清空床位选择
+void ReloadBeds(World& world, CheckInFormState& state) {
+    state.beds.clear();
+    ClearBedSelection(state);
+    if (state.roomIndex >= 0 && state.roomIndex < static_cast<int>(state.rooms.size())) {
+        const data::RoomRecord& room = state.rooms[static_cast<std::size_t>(state.roomIndex)];
+        state.roomId = room.id;
+        CopyToBuffer(state.roomCode, sizeof(state.roomCode), room.code);
+        if (data::IFloorLayoutService* layout = FloorLayoutService(world)) {
+            state.beds = layout->AvailableBeds(state.roomId);  // 服务端只返回 bed_status=0
+        }
+    } else {
+        state.roomId = 0;
+        state.roomCode[0] = '\0';
+    }
+}
+
+// 选床位 → 写 bedId/bedNumber，并按房间房型价格带出床位费
+void ApplyCascadeBedFee(CheckInFormState& state) {
+    if (state.bedIndex < 0 || state.bedIndex >= static_cast<int>(state.beds.size())) {
+        ClearBedSelection(state);
+        return;
+    }
+    const data::BedRecord& bed = state.beds[static_cast<std::size_t>(state.bedIndex)];
+    state.bedId = bed.id;
+    CopyToBuffer(state.bedNumber, sizeof(state.bedNumber), bed.bedNumber);
+    // 床位费取房间房型价格（RoomRecord.price 已由数据层 join room_types；未匹配为 0）
+    double fee = 0.0;
+    if (state.roomIndex >= 0 && state.roomIndex < static_cast<int>(state.rooms.size())) {
+        fee = state.rooms[static_cast<std::size_t>(state.roomIndex)].price;
+    }
+    FormatDouble(state.bedFee, sizeof(state.bedFee), fee);
 }
 
 bool ValidateForm(CheckInFormState& state) {
@@ -417,11 +524,10 @@ bool ValidateForm(CheckInFormState& state) {
     } else if (ParseDouble(TextOf(state.nursingFee), nullptr) <= 0.0) {
         state.eNursingFee = "护理费用未带出，请重新选择护理等级";
     }
-    const std::string bedNumber = TextOf(state.bedNumber);
-    if (bedNumber.empty()) {
-        state.eBedNumber = "请输入入住床位（如 104-1）";
+    if (state.bedId <= 0 && TextOf(state.bedNumber).empty()) {
+        state.eBedNumber = "请选择入住床位（楼层 → 房间 → 床位）";
     } else if (ParseDouble(TextOf(state.bedFee), nullptr) <= 0.0) {
-        state.eBedFee = "床位费用未带出，请检查床位号（如 104-1 / 101-1 / 403-1）";
+        state.eBedFee = "床位费用未带出，请检查房间房型价格";
     }
 
     bool ok = false;
@@ -490,6 +596,11 @@ data::CheckInRecord BuildRecord(const CheckInFormState& state) {
     record.nursingLevelId = state.nursingLevelId;
     record.nursingLevelName = TextOf(state.nursingLevelName);
     record.bedNumber = TextOf(state.bedNumber);
+    record.bedId = state.bedId;
+    record.floorId = state.floorId;
+    record.roomId = state.roomId;
+    record.floorName = TextOf(state.floorName);
+    record.roomCode = TextOf(state.roomCode);
     record.deposit = ParseDouble(TextOf(state.deposit), nullptr);
     record.nursingFee = ParseDouble(TextOf(state.nursingFee), nullptr);
     record.bedFee = ParseDouble(TextOf(state.bedFee), nullptr);
@@ -643,6 +754,76 @@ bool DrawUploadButton(const PageMapper& mapper, const SectionLayout& layout, int
     return clicked;
 }
 
+// 下拉框（返回新选中下标；-1 表示本帧未变更）
+int DrawComboField(const PageMapper& mapper, const SectionLayout& layout, int column, float y,
+                   const char* label, bool required, const std::string& preview,
+                   const std::vector<std::string>& options, int selectedIndex,
+                   const std::string& error) {
+    DrawLabel(mapper, layout, column, y, label, required);
+    PushInputStyle(!error.empty());
+    mapper.SetCursor(ControlX(layout, column), y);
+    ImGui::SetNextItemWidth(layout.controlWidth);
+    int changed = -1;
+    {
+        ui::ScopedFontSize font(14.0f);
+        const std::string id = std::string("##combo_") + label;
+        if (ImGui::BeginCombo(id.c_str(), preview.c_str())) {
+            for (int index = 0; index < static_cast<int>(options.size()); ++index) {
+                if (ImGui::Selectable(options[static_cast<std::size_t>(index)].c_str(),
+                                      selectedIndex == index)) {
+                    changed = index;
+                }
+            }
+            ImGui::EndCombo();
+        }
+    }
+    PopInputStyle();
+    DrawErrorText(mapper, ControlX(layout, column), y + kControlHeight + 2.0f, error);
+    return changed;
+}
+
+// 上传按钮 + 100×100 预览（图片：platform::PickImageFile → assets/uploads/checkin）
+void DrawUploadWithPreview(World& world, const PageMapper& mapper, const SectionLayout& layout,
+                           int column, float y, const char* label, char* pathBuffer,
+                           size_t pathSize) {
+    if (DrawUploadButton(mapper, layout, column, y, label)) {
+        const platform::FilePickResult result =
+            platform::PickImageFile("uploads/checkin", 2 * 1024 * 1024);
+        if (result.ok) {
+            CopyToBuffer(pathBuffer, pathSize, result.relativePath);
+            PushPageToast(world, "上传成功：" + result.fileName, ui::ToastType::Success);
+        } else if (!result.canceled) {
+            PushPageToast(world, result.error.empty() ? "上传失败" : result.error,
+                          ui::ToastType::Error);
+        }
+    }
+    const float previewX = ControlX(layout, column);
+    const float previewY = y + kUploadButtonHeight + 8.0f;
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const ImVec2 min = mapper.Pos(previewX, previewY);
+    const ImVec2 max(min.x + kPhotoPreviewSize, min.y + kPhotoPreviewSize);
+    drawList->AddRectFilled(min, max, theme::Colors().panelHover, 4.0f);
+    drawList->AddRect(min, max, theme::Colors().border, 4.0f, 0, 1.0f);
+    const std::string pathText = TextOf(pathBuffer);
+    render::TextureCache* textures = world.TryResource<render::TextureCache>();
+    if (textures != nullptr && !pathText.empty()) {
+        const render::Texture& texture = textures->Get(pathText.c_str());
+        if (texture.Valid()) {
+            render::DrawImageContain(drawList, texture,
+                                     layout::Rect{min.x + 2.0f, min.y + 2.0f,
+                                                  kPhotoPreviewSize - 4.0f,
+                                                  kPhotoPreviewSize - 4.0f});
+            return;
+        }
+    }
+    ui::ScopedFontSize font(12.0f);
+    const char* hint = pathText.empty() ? "暂无图片" : "图片加载失败";
+    const ImVec2 textSize = ImGui::CalcTextSize(hint);
+    drawList->AddText(ImVec2(min.x + (kPhotoPreviewSize - textSize.x) * 0.5f,
+                             min.y + (kPhotoPreviewSize - textSize.y) * 0.5f),
+                      theme::Colors().textPlaceholder, hint);
+}
+
 void DrawSectionTitle(const PageMapper& mapper, float x, float y, const char* title) {
     mapper.SetCursor(x, y);
     ui::ScopedFontSize font(16.0f);
@@ -673,8 +854,14 @@ public:
             m_visible = true;
             ResetForm(*state);
             m_resetScroll = true;
+            // 可见窗口/隐藏自测钩子：ZZYL_SELFTEST_CASCADE=1 时首帧滚到「入住配置」级联区
+            // （仅用于自测截图；正常启动未设置该环境变量时行为完全不变）
+            const char* cascadeEnv = std::getenv("ZZYL_SELFTEST_CASCADE");
+            m_cascadeAutoScroll = cascadeEnv != nullptr && std::string(cascadeEnv) == "1";
+            m_cascadeApplied = false;
         }
         EnsureNursingLevels(*state, *service);
+        EnsureCascadeDictionaries(world, *state);
 
         const layout::Rect pageViewport = shell->pageViewport;
         if (pageViewport.Empty()) {
@@ -690,14 +877,14 @@ public:
 private:
     // 分区高度（与实际绘制用同一组公式，保证分区底色不裁内容）
     static float BasicHeight() {
-        return kFirstRowOffset + 3.0f * kRowStep + kAddressHeight + kRowGap +
-               kUploadButtonHeight + 8.0f + 16.0f;
+        return kFirstRowOffset + 3.0f * kRowStep + kPhotoBlockHeight + kRowGap +
+               kPhotoBlockHeight + 16.0f;
     }
     static float FamilyHeight(const CheckInFormState& state) {
         const float rows = static_cast<float>(std::max<std::size_t>(state.families.size(), 1));
         return kFirstRowOffset + kFamilyHeaderHeight + rows * kFamilyRowHeight + 16.0f;
     }
-    static float ConfigHeight() { return kFirstRowOffset + 5.0f * kRowStep + 16.0f; }
+    static float ConfigHeight() { return kFirstRowOffset + 6.0f * kRowStep + 16.0f; }
     static float ContractHeight() {
         return kFirstRowOffset + 2.0f * kRowStep + kUploadButtonHeight + 8.0f + 16.0f;
     }
@@ -717,6 +904,14 @@ private:
             if (m_resetScroll) {
                 m_resetScroll = false;
                 ImGui::SetScrollY(0.0f);
+            }
+            if (m_cascadeAutoScroll && !m_cascadeApplied) {
+                m_cascadeApplied = true;
+                // 先撑出内容高度，再滚动到入住配置（否则首帧滚动范围尚未建立会被夹到 0）
+                ImGui::SetCursorScreenPos(ImVec2(0.0f, 0.0f));
+                ImGui::Dummy(ImVec2(1.0f, 1460.0f));
+                ImGui::SetScrollY(BasicHeight() + kSectionGap + FamilyHeight(state) +
+                                  kSectionGap);
             }
             PageMapper mapper;
             mapper.originX = pageViewport.x;
@@ -831,17 +1026,15 @@ private:
         }
         PopInputStyle();
         DrawErrorText(mapper, ControlX(layout, 0), y + kAddressHeight + 2.0f, state.eAddress);
-        if (DrawUploadButton(mapper, layout, 1, y, "一寸照片")) {
-            PushPageToast(world, "图片上传二期支持（本地选图）", ui::ToastType::Warning);
-        }
-        y += kAddressHeight + kRowGap;
+        DrawUploadWithPreview(world, mapper, layout, 1, y, "一寸照片", state.imagePath,
+                              sizeof(state.imagePath));
+        y += kPhotoBlockHeight + kRowGap;
 
-        if (DrawUploadButton(mapper, layout, 0, y, "身份证人像面")) {
-            PushPageToast(world, "图片上传二期支持（本地选图）", ui::ToastType::Warning);
-        }
-        if (DrawUploadButton(mapper, layout, 1, y, "身份证国徽面")) {
-            PushPageToast(world, "图片上传二期支持（本地选图）", ui::ToastType::Warning);
-        }
+        DrawUploadWithPreview(world, mapper, layout, 0, y, "身份证人像面", state.idCardPortraitImg,
+                              sizeof(state.idCardPortraitImg));
+        DrawUploadWithPreview(world, mapper, layout, 1, y, "身份证国徽面",
+                              state.idCardNationalEmblemImg,
+                              sizeof(state.idCardNationalEmblemImg));
     }
 
     void DrawFamilySection(World& world, const PageMapper& mapper, const SectionLayout& layout,
@@ -960,7 +1153,6 @@ private:
 
     void DrawConfigSection(World& world, const PageMapper& mapper, const SectionLayout& layout,
                            CheckInFormState& state, float firstRow) {
-        (void)world;
         float y = firstRow;
         DrawRangeRow(mapper, layout, 0, y, "入住期限", state.startDate, sizeof(state.startDate),
                      state.endDate, sizeof(state.endDate), state.eStartDate, state.eEndDate);
@@ -969,7 +1161,7 @@ private:
                      state.eFeeStartDate, state.eFeeEndDate);
         y += kRowStep;
 
-        // 护理等级
+        // 护理等级（col0）
         DrawLabel(mapper, layout, 0, y, "护理等级", true);
         PushInputStyle(!state.eNursingLevel.empty());
         mapper.SetCursor(ControlX(layout, 0), y);
@@ -1002,11 +1194,57 @@ private:
         DrawErrorText(mapper, ControlX(layout, 0), y + kControlHeight + 2.0f,
                       state.eNursingLevel);
 
-        const bool bedEdited = DrawInput(mapper, layout, 1, y, "入住床位", true, state.bedNumber,
-                                         sizeof(state.bedNumber), "请输入床位号，如 104-1",
-                                         state.eBedNumber);
-        if (bedEdited) {
-            ApplyBedNumber(state);
+        // 楼层（col1）→ 房间 → 床位 级联
+        std::vector<std::string> floorLabels;
+        std::string floorPreview = "请选择楼层";
+        for (std::size_t index = 0; index < state.floors.size(); ++index) {
+            floorLabels.push_back(state.floors[index].name);
+        }
+        if (state.floorIndex >= 0 && state.floorIndex < static_cast<int>(state.floors.size())) {
+            floorPreview = state.floors[static_cast<std::size_t>(state.floorIndex)].name;
+        }
+        const int floorChanged = DrawComboField(mapper, layout, 1, y, "楼层", true, floorPreview,
+                                                floorLabels, state.floorIndex, std::string());
+        if (floorChanged >= 0) {
+            state.floorIndex = floorChanged;
+            ReloadRooms(world, state);
+        }
+        y += kRowStep;
+
+        // 房间（col0）
+        std::vector<std::string> roomLabels;
+        std::string roomPreview = "请选择房间";
+        for (std::size_t index = 0; index < state.rooms.size(); ++index) {
+            const data::RoomRecord& room = state.rooms[index];
+            roomLabels.push_back(room.code + (room.typeName.empty() ? "" : "  " + room.typeName));
+        }
+        if (state.roomIndex >= 0 && state.roomIndex < static_cast<int>(state.rooms.size())) {
+            const data::RoomRecord& room = state.rooms[static_cast<std::size_t>(state.roomIndex)];
+            roomPreview = room.code + (room.typeName.empty() ? "" : "  " + room.typeName);
+        }
+        const int roomChanged =
+            DrawComboField(mapper, layout, 0, y, "房间", true, roomPreview, roomLabels,
+                           state.roomIndex, std::string());
+        if (roomChanged >= 0) {
+            state.roomIndex = roomChanged;
+            ReloadBeds(world, state);
+        }
+
+        // 入住床位（col1，仅空闲床位）
+        std::vector<std::string> bedLabels;
+        std::string bedPreview = "请选择床位";
+        for (std::size_t index = 0; index < state.beds.size(); ++index) {
+            bedLabels.push_back(state.beds[index].bedNumber);
+        }
+        if (state.bedIndex >= 0 && state.bedIndex < static_cast<int>(state.beds.size())) {
+            bedPreview = state.beds[static_cast<std::size_t>(state.bedIndex)].bedNumber;
+        }
+        const int bedChanged =
+            DrawComboField(mapper, layout, 1, y, "入住床位", true, bedPreview, bedLabels,
+                           state.bedIndex, state.eBedNumber);
+        if (bedChanged >= 0) {
+            state.bedIndex = bedChanged;
+            ApplyCascadeBedFee(state);
         }
         y += kRowStep;
 
@@ -1077,13 +1315,41 @@ private:
         y += kRowStep;
 
         if (DrawUploadButton(mapper, layout, 0, y, "入住合同")) {
-            PushPageToast(world, "合同 PDF 上传二期支持（本地选文件）", ui::ToastType::Warning);
+            const platform::FilePickResult result =
+                platform::PickPdfFile("uploads/contract", 2 * 1024 * 1024);
+            if (result.ok) {
+                CopyToBuffer(state.agreementPath, sizeof(state.agreementPath),
+                             result.relativePath);
+                CopyToBuffer(state.agreementFileName, sizeof(state.agreementFileName),
+                             result.fileName);
+                PushPageToast(world, "合同上传成功：" + result.fileName, ui::ToastType::Success);
+            } else if (!result.canceled) {
+                PushPageToast(world, result.error.empty() ? "合同上传失败" : result.error,
+                              ui::ToastType::Error);
+            }
         }
-        mapper.SetCursor(ControlX(layout, 0) + kUploadButtonWidth + 8.0f,
-                         y + (kUploadButtonHeight - ImGui::GetTextLineHeight()) * 0.5f);
-        ui::ScopedFontSize hintFont(12.0f);
-        ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(theme::Colors().textMuted),
-                           "只能上传不超过 2MB 的 PDF 文件");
+        {
+            const std::string fileName = TextOf(state.agreementFileName);
+            mapper.SetCursor(ControlX(layout, 0) + kUploadButtonWidth + 8.0f,
+                             y + (kUploadButtonHeight - ImGui::GetTextLineHeight()) * 0.5f);
+            ui::ScopedFontSize font(13.0f);
+            if (fileName.empty()) {
+                ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(theme::Colors().textMuted),
+                                   "只能上传不超过 2MB 的 PDF 文件");
+            } else {
+                ImGui::TextUnformatted(fileName.c_str());
+                ImGui::SameLine(0.0f, 8.0f);
+                if (ImGui::SmallButton("[查看]##agreement_view")) {
+                    if (!platform::OpenFileWithShell(TextOf(state.agreementPath))) {
+                        PushPageToast(world, "打开合同失败（文件可能已被移动）",
+                                      ui::ToastType::Error);
+                    }
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("使用系统默认程序打开 PDF");
+                }
+            }
+        }
     }
 
     void DrawFooter(World& world, const PageMapper& mapper, const SectionLayout& layout,
@@ -1165,6 +1431,8 @@ private:
 
     bool m_visible = false;
     bool m_resetScroll = false;
+    bool m_cascadeAutoScroll = false;
+    bool m_cascadeApplied = false;
 };
 
 }  // namespace

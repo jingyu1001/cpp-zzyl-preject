@@ -8,6 +8,7 @@
 #endif
 
 #include "zzyl/app/App.h"
+#include "zzyl/platform/FileDialog.h"
 
 namespace {
 
@@ -21,6 +22,7 @@ void PrintUsage() {
         "  --auto-login        启动后自动 Mock 登录并进入首页\n"
         "  --empty-data        空态测试钩子：业务种子数据返回空集合（表格显示暂无数据）\n"
         "  --db <path>         SQLite 数据库路径（默认 <exe目录>/data/zzyl.db；也可用 ZZYL_DB_PATH）\n"
+        "  --picker-selftest   文件选择器自测：打开应用内选择器（配合 ZZYL_PICKER_AUTOTEST=1）\n"
         "  --selftest [dir]    自测：隐藏窗口截图 1280x720 / 缩放 / F11 全屏，输出 BMP + metrics.json\n"
         "  --frames <n>        自测帧数上限（默认 16）\n"
         "  --help              显示本帮助\n"
@@ -66,6 +68,10 @@ int main(int argc, char** argv) {
             options.dbPath = argv[++index];
             continue;
         }
+        if (argument == "--picker-selftest") {
+            options.pickerSelftest = true;
+            continue;
+        }
         if (argument == "--selftest") {
             options.selftest = true;
             options.hidden = true;
@@ -81,6 +87,15 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "未知参数：%s\n", argument.c_str());
         PrintUsage();
         return 0;
+    }
+
+    if (options.pickerSelftest) {
+        const zzyl::platform::FilePickResult result =
+            zzyl::platform::PickImageFile("uploads/picker_selftest", 5 * 1024 * 1024);
+        std::printf("[picker-selftest] ok=%d canceled=%d file=%s rel=%s err=%s\n", result.ok ? 1 : 0,
+                    result.canceled ? 1 : 0, result.fileName.c_str(), result.relativePath.c_str(),
+                    result.error.c_str());
+        return result.ok ? 0 : 2;
     }
 
     zzyl::App app;

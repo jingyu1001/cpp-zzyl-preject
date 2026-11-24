@@ -469,4 +469,156 @@ std::vector<NursingLevelRecord> SeedCheckInService::NursingLevels() {
     };
 }
 
+// =============================================================================
+// Sprint 4 内存回退（--empty-data / DB 不可用）
+// =============================================================================
+SeedNursingPlanService::SeedNursingPlanService(bool emptyData) {
+    if (emptyData) {
+        return;
+    }
+    m_plans.push_back(NursingPlanRecord{133, 1, "1号护理计划", 1, 0, "2024-08-19 19:17:31", ""});
+    m_plans.push_back(NursingPlanRecord{134, 1, "2号护理计划", 0, 1, "2024-08-19 19:36:10", "2026-11-20 09:56:27"});
+    m_plans.push_back(NursingPlanRecord{135, 1, "3号护理计划", 1, 0, "2024-08-29 16:56:39", ""});
+}
+
+std::vector<NursingPlanRecord> SeedNursingPlanService::List(const NursingPlanQuery& query) {
+    std::vector<NursingPlanRecord> result;
+    for (const NursingPlanRecord& plan : m_plans) {
+        if (!ContainsNoCase(plan.planName, query.keyword)) {
+            continue;
+        }
+        if (query.status >= 0 && plan.status != query.status) {
+            continue;
+        }
+        result.push_back(plan);
+    }
+    return result;
+}
+
+bool SeedNursingPlanService::Get(int id, NursingPlanRecord* outRecord, std::string* error) {
+    for (const NursingPlanRecord& plan : m_plans) {
+        if (plan.id == id) {
+            if (outRecord) *outRecord = plan;
+            return true;
+        }
+    }
+    if (error) *error = "护理计划不存在";
+    return false;
+}
+
+bool SeedNursingPlanService::Add(const NursingPlanRecord& record, std::string* error) {
+    if (record.planName.empty()) {
+        if (error) *error = "护理计划名称不能为空";
+        return false;
+    }
+    NursingPlanRecord added = record;
+    added.id = m_nextId++;
+    m_plans.push_back(added);
+    return true;
+}
+
+bool SeedNursingPlanService::Update(const NursingPlanRecord& record, std::string* error) {
+    for (NursingPlanRecord& plan : m_plans) {
+        if (plan.id == record.id) {
+            plan = record;
+            return true;
+        }
+    }
+    if (error) *error = "护理计划不存在";
+    return false;
+}
+
+bool SeedNursingPlanService::Remove(const std::vector<int>& ids, std::string* error) {
+    if (ids.empty()) {
+        if (error) *error = "请选择要删除的护理计划";
+        return false;
+    }
+    m_plans.erase(std::remove_if(m_plans.begin(), m_plans.end(),
+                                 [&ids](const NursingPlanRecord& plan) {
+                                     return std::find(ids.begin(), ids.end(), plan.id) != ids.end();
+                                 }),
+                  m_plans.end());
+    return true;
+}
+
+bool SeedNursingPlanService::SetStatus(int id, bool enabled, std::string* error) {
+    for (NursingPlanRecord& plan : m_plans) {
+        if (plan.id == id) {
+            plan.status = enabled ? 1 : 0;
+            return true;
+        }
+    }
+    if (error) *error = "护理计划不存在";
+    return false;
+}
+
+SeedNursingLevelService::SeedNursingLevelService(bool emptyData) {
+    if (emptyData) {
+        return;
+    }
+    m_levels.push_back(NursingLevelRecord{76, "1号护理等级", 1500.0, 133, "1号护理计划", 1, "我是1号哦", "2024-08-14 16:33:16", ""});
+    m_levels.push_back(NursingLevelRecord{77, "2号护理等级", 2000.0, 134, "2号护理计划", 1, "我是2号哦", "2024-08-20 11:18:21", ""});
+    m_levels.push_back(NursingLevelRecord{78, "3号护理等级", 3000.0, 135, "3号护理计划", 1, "我是3号哦", "2024-08-29 16:58:00", ""});
+}
+
+std::vector<NursingLevelRecord> SeedNursingLevelService::List(const NursingLevelQuery& query) {
+    std::vector<NursingLevelRecord> result;
+    for (const NursingLevelRecord& level : m_levels) {
+        if (!ContainsNoCase(level.name, query.keyword)) {
+            continue;
+        }
+        if (query.status >= 0 && level.status != query.status) {
+            continue;
+        }
+        result.push_back(level);
+    }
+    return result;
+}
+
+bool SeedNursingLevelService::Add(const NursingLevelRecord& record, std::string* error) {
+    if (record.name.empty()) {
+        if (error) *error = "护理等级名称不能为空";
+        return false;
+    }
+    NursingLevelRecord added = record;
+    added.id = m_nextId++;
+    m_levels.push_back(added);
+    return true;
+}
+
+bool SeedNursingLevelService::Update(const NursingLevelRecord& record, std::string* error) {
+    for (NursingLevelRecord& level : m_levels) {
+        if (level.id == record.id) {
+            level = record;
+            return true;
+        }
+    }
+    if (error) *error = "护理等级不存在";
+    return false;
+}
+
+bool SeedNursingLevelService::Remove(const std::vector<int>& ids, std::string* error) {
+    if (ids.empty()) {
+        if (error) *error = "请选择要删除的护理等级";
+        return false;
+    }
+    m_levels.erase(std::remove_if(m_levels.begin(), m_levels.end(),
+                                  [&ids](const NursingLevelRecord& level) {
+                                      return std::find(ids.begin(), ids.end(), level.id) != ids.end();
+                                  }),
+                   m_levels.end());
+    return true;
+}
+
+bool SeedNursingLevelService::SetStatus(int id, bool enabled, std::string* error) {
+    for (NursingLevelRecord& level : m_levels) {
+        if (level.id == id) {
+            level.status = enabled ? 1 : 0;
+            return true;
+        }
+    }
+    if (error) *error = "护理等级不存在";
+    return false;
+}
+
 }  // namespace zzyl::data

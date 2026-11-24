@@ -39,18 +39,113 @@ struct UserQuery {
     std::string endTime;
 };
 
+// ---- Sprint 4：护理计划 / 护理等级 / 楼层-房间-床位 ----
+struct NursingPlanProjectRecord {
+    int id = 0;
+    int planId = 0;
+    int projectId = 0;
+    std::string projectName;   // 冗余显示（nursing_projects.name）
+    std::string executeTime;   // HH:mm:ss
+    int executeCycle = 0;      // 0 天 / 1 周 / 2 月
+    int executeFrequency = 1;  // 频次
+};
+
+struct NursingPlanRecord {
+    int id = 0;
+    int sortNo = 1;
+    std::string planName;
+    int status = 1;            // 0 禁用 / 1 启用
+    int levelRefCount = 0;     // 被护理等级引用次数（>0 时列表禁用「修改/删除」，Web 口径）
+    std::string createTime;
+    std::string updateTime;
+    std::vector<NursingPlanProjectRecord> projects;
+};
+
+struct NursingPlanQuery {
+    std::string keyword;
+    int status = -1;
+};
+
+class INursingPlanService {
+public:
+    virtual ~INursingPlanService() = default;
+    virtual std::vector<NursingPlanRecord> List(const NursingPlanQuery& query) = 0;
+    virtual bool Get(int id, NursingPlanRecord* outRecord, std::string* error) = 0;
+    virtual bool Add(const NursingPlanRecord& record, std::string* error) = 0;
+    virtual bool Update(const NursingPlanRecord& record, std::string* error) = 0;
+    virtual bool Remove(const std::vector<int>& ids, std::string* error) = 0;
+    virtual bool SetStatus(int id, bool enabled, std::string* error) = 0;
+};
+
+struct NursingLevelRecord {
+    int id = 0;
+    std::string name;   // 1号/2号/3号护理等级
+    double price = 0.0; // 元/月（Web 字段 fee）
+    int planId = 0;
+    std::string planName;    // 冗余显示
+    int status = 1;          // 0 禁用 / 1 启用
+    std::string description;
+    std::string createTime;
+    std::string updateTime;
+};
+
+struct NursingLevelQuery {
+    std::string keyword;
+    int status = -1;
+};
+
+class INursingLevelService {
+public:
+    virtual ~INursingLevelService() = default;
+    virtual std::vector<NursingLevelRecord> List(const NursingLevelQuery& query) = 0;
+    virtual bool Add(const NursingLevelRecord& record, std::string* error) = 0;
+    virtual bool Update(const NursingLevelRecord& record, std::string* error) = 0;
+    virtual bool Remove(const std::vector<int>& ids, std::string* error) = 0;
+    virtual bool SetStatus(int id, bool enabled, std::string* error) = 0;
+};
+
+struct FloorRecord {
+    int id = 0;
+    std::string name;
+    int code = 0;
+};
+
+struct RoomRecord {
+    int id = 0;
+    std::string code;
+    int sort = 0;
+    std::string typeName;
+    int floorId = 0;
+    double price = 0.0;  // 房型床位费（room_type.price 弱关联；type_name 未匹配时为 0）
+};
+
+struct BedRecord {
+    int id = 0;
+    std::string bedNumber;
+    int bedStatus = 0;  // 0 空闲 / 1 已入住 / 2 请假
+    int sort = 0;
+    int roomId = 0;
+    std::string elderName;  // 已入住老人（M7 预览显示）
+};
+
+// M7 床位预览 + M4 床位级联（只读；床状态变更走入住业务）
+class IFloorLayoutService {
+public:
+    virtual ~IFloorLayoutService() = default;
+    virtual std::vector<FloorRecord> Floors() = 0;
+    virtual std::vector<RoomRecord> Rooms(int floorId) = 0;
+    virtual std::vector<BedRecord> Beds(int roomId) = 0;
+    virtual std::vector<BedRecord> BedsByFloor(int floorId) = 0;
+    // M4 级联专用：仅空闲床位（bed_status=0），Web getRoomAndBedByBedStatus/0 口径
+    virtual std::vector<BedRecord> AvailableBeds(int roomId) = 0;
+};
+
 // ---- M4 入退管理-入住办理（check_in + check_in_family + nursing_levels） ----
 // 字段依据 Web《Sprint3_M4入住办理规格_v0.1》§2.2/§4.1/§4.2；本地 SQLite 组装，不依赖后端 detail 接口。
 struct CheckInFamilyRecord {
     std::string name;   // 家属姓名
     std::string phone;  // 家属联系方式
     int kinship = 0;    // 0 子女 / 1 配偶 / 2 亲属 / 3 朋友 / 4 社工 / 5 其他
-};
-
-struct NursingLevelRecord {
-    int id = 0;
-    std::string name;   // 1号/2号/3号护理等级
-    double price = 0.0; // 元/月
 };
 
 struct CheckInRecord {
@@ -75,8 +170,12 @@ struct CheckInRecord {
     std::string feeEndDate;     // 费用结束
     int nursingLevelId = 0;
     std::string nursingLevelName;
-    std::string bedNumber;      // 入住床位号（如 104-1；本期不做楼层级联，文本输入）
+    std::string bedNumber;      // 入住床位号（如 104-1）
     int bedId = 0;
+    int floorId = 0;            // Sprint 4 级联：楼层
+    int roomId = 0;             // Sprint 4 级联：房间
+    std::string floorName;
+    std::string roomCode;
     double deposit = 3000.0;    // 押金（默认 3000）
     double nursingFee = 0.0;    // 护理费（由护理等级带出）
     double bedFee = 0.0;        // 床位费（由房型价格带出）

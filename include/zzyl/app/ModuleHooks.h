@@ -30,4 +30,9 @@ void RegisterCheckInListModule(World& world, SystemScheduler& scheduler);
 void RegisterCheckInFormModule(World& world, SystemScheduler& scheduler);
 void RegisterCheckInDetailModule(World& world, SystemScheduler& scheduler);
 
+// Sprint 4：M5 护理计划 / M6 护理等级（dev2）、M7 床位预览（dev1）
+void RegisterNursingPlanModule(World& world, SystemScheduler& scheduler);
+void RegisterNursingLevelModule(World& world, SystemScheduler& scheduler);
+void RegisterBedPreviewModule(World& world, SystemScheduler& scheduler);
+
 }  // namespace zzyl

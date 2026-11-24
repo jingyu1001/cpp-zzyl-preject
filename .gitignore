@@ -37,3 +37,5 @@ data/
 *.db-wal
 *.db-shm
 exports/
+# 上传运行产物（Sprint 4：文件对话框复制到 assets/uploads）
+assets/uploads/

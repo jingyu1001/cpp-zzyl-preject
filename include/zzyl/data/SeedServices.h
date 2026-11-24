@@ -68,4 +68,45 @@ private:
     int m_nextId = 200;
 };
 
+// Sprint 4 内存回退（仅 --empty-data / DB 不可用；空态返回空）
+class SeedNursingPlanService final : public INursingPlanService {
+public:
+    explicit SeedNursingPlanService(bool emptyData = false);
+    std::vector<NursingPlanRecord> List(const NursingPlanQuery& query) override;
+    bool Get(int id, NursingPlanRecord* outRecord, std::string* error) override;
+    bool Add(const NursingPlanRecord& record, std::string* error) override;
+    bool Update(const NursingPlanRecord& record, std::string* error) override;
+    bool Remove(const std::vector<int>& ids, std::string* error) override;
+    bool SetStatus(int id, bool enabled, std::string* error) override;
+
+private:
+    std::vector<NursingPlanRecord> m_plans;
+    int m_nextId = 200;
+};
+
+class SeedNursingLevelService final : public INursingLevelService {
+public:
+    explicit SeedNursingLevelService(bool emptyData = false);
+    std::vector<NursingLevelRecord> List(const NursingLevelQuery& query) override;
+    bool Add(const NursingLevelRecord& record, std::string* error) override;
+    bool Update(const NursingLevelRecord& record, std::string* error) override;
+    bool Remove(const std::vector<int>& ids, std::string* error) override;
+    bool SetStatus(int id, bool enabled, std::string* error) override;
+
+private:
+    std::vector<NursingLevelRecord> m_levels;
+    int m_nextId = 200;
+};
+
+// 回退床位布局：仅空态（正常数据走 SQLite）
+class SeedFloorLayoutService final : public IFloorLayoutService {
+public:
+    explicit SeedFloorLayoutService(bool /*emptyData*/ = false) {}
+    std::vector<FloorRecord> Floors() override { return {}; }
+    std::vector<RoomRecord> Rooms(int /*floorId*/) override { return {}; }
+    std::vector<BedRecord> Beds(int /*roomId*/) override { return {}; }
+    std::vector<BedRecord> BedsByFloor(int /*floorId*/) override { return {}; }
+    std::vector<BedRecord> AvailableBeds(int /*roomId*/) override { return {}; }
+};
+
 }  // namespace zzyl::data

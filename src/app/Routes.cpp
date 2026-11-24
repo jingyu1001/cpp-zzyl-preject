@@ -35,6 +35,18 @@ bool TryRouteFromPath(const std::string& path, Route& outRoute) {
         outRoute = Route::CheckInDetail;
         return true;
     }
+    if (path == "/nursing/plan") {
+        outRoute = Route::NursingPlan;
+        return true;
+    }
+    if (path == "/nursing/level") {
+        outRoute = Route::NursingLevel;
+        return true;
+    }
+    if (path == "/liveIn/floor") {
+        outRoute = Route::BedPreview;
+        return true;
+    }
     return false;
 }
 
@@ -56,6 +68,12 @@ const char* RoutePath(Route route) {
             return "/enterQuit/checkInForm";
         case Route::CheckInDetail:
             return "/enterQuit/checkInInfo";
+        case Route::NursingPlan:
+            return "/nursing/plan";
+        case Route::NursingLevel:
+            return "/nursing/level";
+        case Route::BedPreview:
+            return "/liveIn/floor";
     }
     return "/index";
 }
@@ -78,6 +96,12 @@ const char* RouteTitle(Route route) {
             return "办理入住";
         case Route::CheckInDetail:
             return "入住详情";
+        case Route::NursingPlan:
+            return "护理计划";
+        case Route::NursingLevel:
+            return "护理等级";
+        case Route::BedPreview:
+            return "床位预览";
     }
     return "首页";
 }

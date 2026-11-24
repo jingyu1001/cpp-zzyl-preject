@@ -30,6 +30,7 @@
 #include "zzyl/app/Routes.h"
 #include "zzyl/core/System.h"
 #include "zzyl/data/BusinessServices.h"
+#include "zzyl/platform/FileDialog.h"
 #include "zzyl/render/Texture.h"
 #include "zzyl/render/Theme.h"
 #include "zzyl/render/UiDraw.h"
@@ -495,7 +496,7 @@ void DrawPhotoPicker(World& world, RoomTypePageState& state) {
         ui::TextCentered(drawList,
                          layout::Rect{previewRect.x, previewRect.CenterY() - 10.0f, previewRect.w,
                                       20.0f},
-                         colors.textMuted, "暂无图片");
+                         colors.textMuted, "点击素材库或本地上传");
     }
 
     // ---- 素材库（5 张素材 + 无图；点击切换并写回 state.photoPath）----
@@ -539,6 +540,33 @@ void DrawPhotoPicker(World& world, RoomTypePageState& state) {
         }
         if (clicked && hovered) {
             state.photoPath = itemPath;
+        }
+    }
+
+    // ---- 本地上传（platform::PickImageFile：png/jpg/jpeg/bmp/webp，≤5MB）----
+    // 平台层负责复制到 <exe>/assets/uploads/roomtype/ 并返回 assets/... 相对路径；
+    // 超限/非图片会返回 error（不复制文件），这里只 Toast 提示，取消则静默。
+    const layout::Rect uploadRect{gridX, blockStart.y + labelHeight + gridHeight + 6.0f, gridWidth,
+                                  26.0f};
+    const bool uploadHovered = mouse.x >= uploadRect.x && mouse.x <= uploadRect.Right() &&
+                               mouse.y >= uploadRect.y && mouse.y <= uploadRect.Bottom();
+    ui::FillRounded(drawList, uploadRect,
+                    uploadHovered ? theme::WithAlpha(colors.primary, 0.10f) : colors.panel, 4.0f);
+    ui::StrokeRounded(drawList, uploadRect, colors.borderAxis, 4.0f, 1.0f);
+    {
+        ui::ScopedFontSize uploadFont(12.0f);
+        ui::TextCentered(drawList, uploadRect, colors.primary, "本地上传");
+    }
+    if (clicked && uploadHovered) {
+        constexpr std::size_t kMaxUploadBytes = 5u * 1024u * 1024u;
+        const platform::FilePickResult picked =
+            platform::PickImageFile("uploads/roomtype", kMaxUploadBytes);
+        if (picked.ok) {
+            state.photoPath = picked.relativePath;
+            PushToast(world, "图片已上传：" + picked.fileName, ui::ToastType::Success);
+        } else if (!picked.canceled) {
+            PushToast(world, picked.error.empty() ? "本地图片上传失败" : picked.error,
+                      ui::ToastType::Error);
         }
     }
 }

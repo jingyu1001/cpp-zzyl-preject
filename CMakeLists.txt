@@ -117,6 +117,7 @@ set(ZZYL_APP_SOURCES
     src/platform/Window.cpp
     src/platform/ImGuiLayer.cpp
     src/platform/Screenshot.cpp
+    src/platform/FileDialog.cpp
 
     # 布局 / 主题 / 绘制工具 / 图片纹理（WIC）
     src/layout/Layout.cpp
@@ -152,6 +153,9 @@ set(ZZYL_APP_SOURCES
     src/pages/CheckInListModule.cpp     # cpp-dev1（Sprint 3 M4 列表）
     src/pages/CheckInFormModule.cpp     # cpp-dev2（Sprint 3 M4 表单）
     src/pages/CheckInDetailModule.cpp   # cpp-dev2（Sprint 3 M4 详情）
+    src/pages/NursingPlanModule.cpp     # cpp-dev2（Sprint 4 M5）
+    src/pages/NursingLevelModule.cpp    # cpp-dev2（Sprint 4 M6）
+    src/pages/BedPreviewModule.cpp      # cpp-dev1（Sprint 4 M7）
 )
 
 add_executable(zzyl_desktop ${ZZYL_APP_SOURCES})

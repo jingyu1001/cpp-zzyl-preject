@@ -92,6 +92,9 @@ struct DataServices {
     std::unique_ptr<data::IRoomTypeService> roomType;
     std::unique_ptr<data::INursingProjectService> nursingProject;
     std::unique_ptr<data::ICheckInService> checkIn;  // M4 入住办理
+    std::unique_ptr<data::INursingPlanService> nursingPlan;    // M5 护理计划
+    std::unique_ptr<data::INursingLevelService> nursingLevel;  // M6 护理等级
+    std::unique_ptr<data::IFloorLayoutService> floorLayout;    // M7 床位预览 + M4 级联
 };
 
 // 看板数据快照资源（由 DataBootstrapSystem 加载，渲染层只读）

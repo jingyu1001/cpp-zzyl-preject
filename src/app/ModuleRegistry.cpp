@@ -31,6 +31,9 @@ void RegisterAllModules(World& world, SystemScheduler& scheduler, bool emptyData
         services.roomType = std::make_unique<data::SeedRoomTypeService>(true);
         services.nursingProject = std::make_unique<data::SeedNursingProjectService>(true);
         services.checkIn = std::make_unique<data::SeedCheckInService>(true);
+        services.nursingPlan = std::make_unique<data::SeedNursingPlanService>(true);
+        services.nursingLevel = std::make_unique<data::SeedNursingLevelService>(true);
+        services.floorLayout = std::make_unique<data::SeedFloorLayoutService>(true);
         std::printf("[Data] 空数据模式（--empty-data）：使用内存空集合，不打开 SQLite\n");
     } else {
         auto store = std::make_shared<data::SqliteStore>();
@@ -44,6 +47,9 @@ void RegisterAllModules(World& world, SystemScheduler& scheduler, bool emptyData
             services.roomType = std::make_unique<data::SqliteRoomTypeService>(store.get());
             services.nursingProject = std::make_unique<data::SqliteNursingProjectService>(store.get());
             services.checkIn = std::make_unique<data::SqliteCheckInService>(store.get());
+            services.nursingPlan = std::make_unique<data::SqliteNursingPlanService>(store.get());
+            services.nursingLevel = std::make_unique<data::SqliteNursingLevelService>(store.get());
+            services.floorLayout = std::make_unique<data::SqliteFloorLayoutService>(store.get());
             std::printf("[Data] SQLite 已启用：%s\n", activeDbPath.c_str());
         } else {
             std::fprintf(stderr,
@@ -53,6 +59,9 @@ void RegisterAllModules(World& world, SystemScheduler& scheduler, bool emptyData
             services.roomType = std::make_unique<data::SeedRoomTypeService>(false);
             services.nursingProject = std::make_unique<data::SeedNursingProjectService>(false);
             services.checkIn = std::make_unique<data::SeedCheckInService>(false);
+            services.nursingPlan = std::make_unique<data::SeedNursingPlanService>(false);
+            services.nursingLevel = std::make_unique<data::SeedNursingLevelService>(false);
+            services.floorLayout = std::make_unique<data::SeedFloorLayoutService>(false);
         }
     }
     world.EmplaceResource<DataServices>(std::move(services));
@@ -80,9 +89,28 @@ void RegisterAllModules(World& world, SystemScheduler& scheduler, bool emptyData
             svc->nursingProject ? svc->nursingProject->List(data::NursingProjectQuery{}).size() : 0;
         const std::size_t checkInCount =
             svc->checkIn ? svc->checkIn->List(data::CheckInQuery{}).size() : 0;
-        std::printf("[Data] 数据源=%s | 用户=%zu 房型=%zu 护理项目=%zu 入住办理=%zu\n",
+        const std::size_t planCount =
+            svc->nursingPlan ? svc->nursingPlan->List(data::NursingPlanQuery{}).size() : 0;
+        const std::size_t levelCount =
+            svc->nursingLevel ? svc->nursingLevel->List(data::NursingLevelQuery{}).size() : 0;
+        const std::size_t floorCount =
+            svc->floorLayout ? svc->floorLayout->Floors().size() : 0;
+        std::size_t totalRooms = 0;
+        std::size_t totalBeds = 0;
+        if (svc->floorLayout != nullptr) {
+            for (const data::FloorRecord& floor : svc->floorLayout->Floors()) {
+                const auto rooms = svc->floorLayout->Rooms(floor.id);
+                totalRooms += rooms.size();
+                for (const data::RoomRecord& room : rooms) {
+                    totalBeds += svc->floorLayout->Beds(room.id).size();
+                }
+            }
+        }
+        std::printf("[Data] 数据源=%s | 用户=%zu 房型=%zu 护理项目=%zu 入住办理=%zu "
+                    "护理计划=%zu 护理等级=%zu 楼层=%zu 房间=%zu 床位=%zu\n",
                     sqliteActive ? "SQLite" : (emptyData ? "内存(空)" : "内存种子"), userCount,
-                    roomCount, projectCount, checkInCount);
+                    roomCount, projectCount, checkInCount, planCount, levelCount, floorCount,
+                    totalRooms, totalBeds);
         // M4 v4 迁移自检：样例记录（字段/家属/护理等级字典）
         if (svc->checkIn != nullptr) {
             const auto checkIns = svc->checkIn->List(data::CheckInQuery{});
@@ -113,6 +141,9 @@ void RegisterAllModules(World& world, SystemScheduler& scheduler, bool emptyData
     RegisterCheckInListModule(world, scheduler);      // dev1：M4 入住办理列表
     RegisterCheckInFormModule(world, scheduler);      // dev2：M4 办理入住表单
     RegisterCheckInDetailModule(world, scheduler);    // dev2：M4 入住详情
+    RegisterNursingPlanModule(world, scheduler);      // dev2：M5 护理计划
+    RegisterNursingLevelModule(world, scheduler);     // dev2：M6 护理等级
+    RegisterBedPreviewModule(world, scheduler);       // dev1：M7 床位预览
 }
 
 }  // namespace zzyl

@@ -35,9 +35,10 @@ public:
         bool selftest = false;       // 自测模式：自动截图/缩放/全屏并退出
         bool autoLogin = false;      // 启动后自动用 Mock 账号登录（演示/自测）
         bool emptyData = false;      // 空态测试钩子：业务种子数据（用户/房型/护理项目）返回空集合
+        bool pickerSelftest = false; // 文件选择器自测（配合 ZZYL_PICKER_AUTOTEST=1 自动选文件）
         std::string dbPath;          // SQLite 数据库路径覆盖（--db / ZZYL_DB_PATH；空=exe 目录/data/zzyl.db）
         std::string selftestDir;     // 截图与 metrics.json 输出目录
-        int selftestFrames = 62;     // 自测运行帧数上限（保护；17 帧含 M4 三页 1280/1024/1920）
+        int selftestFrames = 70;     // 自测运行帧数上限（保护；21 帧含 Sprint4 新页面）
     };
 
     int Run(const Options& options);

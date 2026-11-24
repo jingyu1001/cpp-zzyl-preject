@@ -20,6 +20,9 @@ enum class Route {
     CheckInList,    // M4 入退管理-入住办理（列表）
     CheckInForm,    // M4 办理入住（表单）
     CheckInDetail,  // M4 入住详情
+    NursingPlan,    // M5 服务管理-护理计划
+    NursingLevel,   // M6 服务管理-护理等级
+    BedPreview,     // M7 在住管理-床位预览
 };
 
 // "/system/user" -> Route::SystemUser；未收录的路径返回 false。

@@ -511,6 +511,33 @@ void App::SelfTestStep(const FrameContext& frame) {
             glfwSetWindowSize(m_window.Handle(), 1280, 720);
             break;
         case 56:
+            break;
+        // ---- Sprint 4 新页面：护理计划 / 护理等级 / 床位预览 / M4 床位级联 ----
+        case 57:
+            QueueNavigateForSelfTest("/nursing/plan");
+            break;
+        case 58:
+            CaptureScreenshot("18_nursing_plan_1280x720");
+            break;
+        case 59:
+            QueueNavigateForSelfTest("/nursing/level");
+            break;
+        case 60:
+            CaptureScreenshot("19_nursing_level_1280x720");
+            break;
+        case 61:
+            QueueNavigateForSelfTest("/liveIn/floor");
+            break;
+        case 62:
+            CaptureScreenshot("20_bed_preview_1280x720");
+            break;
+        case 63:
+            QueueNavigateForSelfTest("/enterQuit/checkInForm");
+            break;
+        case 64:
+            CaptureScreenshot("21_checkin_form_cascade_1280x720");
+            break;
+        case 65:
             m_selftestDone = true;
             break;
         default:
