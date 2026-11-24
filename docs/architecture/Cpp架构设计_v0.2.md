@@ -331,10 +331,10 @@ tester 抽检 `artifacts/_verify_dev3/evidence/` 发现 2 类证据缺口（**�
 
 | 缺口 | 现象 | 责任 / 处置 | 状态（2026-11-24 14:00 硬截止快照） |
 |---|---|---|---|
-| **EV-01 M2/M3 删除后刷新** | dev3 删除类截图未触发（采集/自动化时序问题，非产品缺陷） | lead 裁定不派 dev；tester 实机补证（DQ-0004）：**确认框 + 绿色「确定」点击已 PASS**（M2 `v02`/M3 `v09`）；删除后列表帧已抓（`v03`/`v10`），**条数变化核对未及完成（窗口到期）** | 🟡 **待下迭代**：证据项（截图已抓，仅差核对条数）；非代码缺陷（M1 同组件删除已由 dev2 实测闭环），Sprint 2 可交付不变 |
+| **EV-01 M2/M3 删除后刷新** | dev3 删除类截图未触发（采集/自动化时序问题，非产品缺陷） | lead 裁定不派 dev；cpp-tester 实机补证（DQ-0005）：M2 初始 6 条→删除行1→确定→Toast→**共 5 条**；M3 初始 9 条→横滚→删除行1→确定→Toast→**共 8 条**（首行变原行2）；证据 `artifacts/test_tester_s2/closeout/m2_00~m2_02`、`m3_00~m3_03` | ✅ **PASS（19:xx 闭环）**：删除条数变化与 Toast 已实测闭环；非代码缺陷，Sprint 2 可交付 |
 | **EV-02 真 1920×1080 证据** | dev3 旧图无效（1024 嵌画布/窗口态+浮层/同哈希） | lead 裁定不派 dev；cpp-tester 实机补证完成 | ✅ **PASS**：M2 列表/弹窗 1920×1080（SHA 不同）、M3 列表/弹窗 1920×1080（SHA 不同），均 F11 真全屏（无标题栏/F1 浮层），证据 `artifacts/test_tester_s2/fix_verify/v04/v06/v11/v13` |
 
-> **14:00 硬截止状态（lead 指令）**：EV-02 已闭环 ✅、EV-01 按「待下迭代」标注（证据项，非缺陷），Sprint 2 结论保持 **✅ 可交付**；全部未闭环事项见 `docs/tasks/Sprint2_未完成清单.md`（含 M0 空态、Sprint 3 待决策项、后端依赖、图片上传等）。
+> **Sprint 2 遗留收尾完成（2026-11-24 晚）**：EV-01 删除条数核对、M0 表格空态（`--empty-data` 钩子）、EV-02 真 1920 三项已全部 **PASS ✅**；tester **v5 终固报告：65 用例 PASS 65 / FAIL 0 / 待补证 0 / 未覆盖 0 / 遗留清单清零 / 可交付**；证据 `artifacts/test_tester_s2/closeout/`、`artifacts/selftest_s2_empty/`、`sheet_1920_review.png`。Sprint 3 输入（非收尾项）见 `docs/tasks/Sprint2_未完成清单.md` 第 4~8 项。
 
 
 ---

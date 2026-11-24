@@ -31,7 +31,10 @@ bool MatchStatus(bool enabled, int statusFilter) {
 // =============================================================================
 // 用户管理种子数据：Web 实测 7 条（sys_user）
 // =============================================================================
-SeedUserService::SeedUserService() {
+SeedUserService::SeedUserService(bool emptyData) {
+    if (emptyData) {
+        return;  // --empty-data 空态测试钩子：不注入种子数据
+    }
     m_users.push_back(UserRecord{1, "admin", "若依", "院长办公室", "15888888888", "ry@163.com",
                                  "男", true, "2024-08-14 02:48:23", "管理员", "董事长", "超级管理员"});
     m_users.push_back(UserRecord{2, "ry", "若依", "院长办公室", "15666666666", "ry@qq.com", "男",
@@ -158,7 +161,10 @@ std::vector<std::string> SeedUserService::DeptNames() {
 // =============================================================================
 // 房型设置种子数据：Web 实测 6 条（room_type）
 // =============================================================================
-SeedRoomTypeService::SeedRoomTypeService() {
+SeedRoomTypeService::SeedRoomTypeService(bool emptyData) {
+    if (emptyData) {
+        return;  // --empty-data 空态测试钩子：不注入种子数据
+    }
     m_roomTypes.push_back(RoomTypeRecord{1, "单人套房", 0, 4000.0, "宽敞舒适的套房，配备独立卫浴与护理呼叫系统", "", "", true, "2023-09-26 15:57:50"});
     m_roomTypes.push_back(RoomTypeRecord{2, "双人套房", 0, 6000.0, "适合夫妻或朋友两人居住，空间宽敞", "", "", true, "2023-09-26 15:58:51"});
     m_roomTypes.push_back(RoomTypeRecord{3, "豪华单人间", 0, 3000.0, "豪华装修的单人房间，采光充足", "", "", true, "2023-09-26 15:59:33"});
@@ -235,7 +241,10 @@ bool SeedRoomTypeService::SetStatus(int id, bool enabled, std::string* error) {
 // =============================================================================
 // 护理项目种子数据：Web DB 9 条（nursing_project）；图片按 UI 规格 §6.2 映射
 // =============================================================================
-SeedNursingProjectService::SeedNursingProjectService() {
+SeedNursingProjectService::SeedNursingProjectService(bool emptyData) {
+    if (emptyData) {
+        return;  // --empty-data 空态测试钩子：不注入种子数据
+    }
     m_projects.push_back(NursingProjectRecord{1, "修剪指甲", "次", 1, 30.0, true, "保持指甲整洁，避免抓伤", "assets/icons/修剪指甲@2x.png", "2024-10-18 10:00:00"});
     m_projects.push_back(NursingProjectRecord{2, "衣物清洁", "件", 2, 5.0, true, "清洗、晾晒并整理衣物", "assets/icons/衣物清洁@2x.png", "2024-10-18 10:01:00"});
     m_projects.push_back(NursingProjectRecord{3, "整理床铺", "次", 3, 15.0, true, "整理床单、被褥，保持床铺整洁", "assets/icons/整体床铺@2x.png", "2024-10-18 10:02:00"});

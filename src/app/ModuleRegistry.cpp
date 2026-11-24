@@ -13,14 +13,14 @@
 
 namespace zzyl {
 
-void RegisterAllModules(World& world, SystemScheduler& scheduler) {
+void RegisterAllModules(World& world, SystemScheduler& scheduler, bool emptyData) {
     // ---- 数据服务（数据层入口；后续换 MySQL / SQLite 实现只改这里） ----
     DataServices services;
     services.auth = std::make_unique<data::MockAuthService>();
     services.dashboard = std::make_unique<data::MockDashboardService>();
-    services.user = std::make_unique<data::SeedUserService>();
-    services.roomType = std::make_unique<data::SeedRoomTypeService>();
-    services.nursingProject = std::make_unique<data::SeedNursingProjectService>();
+    services.user = std::make_unique<data::SeedUserService>(emptyData);
+    services.roomType = std::make_unique<data::SeedRoomTypeService>(emptyData);
+    services.nursingProject = std::make_unique<data::SeedNursingProjectService>(emptyData);
     world.EmplaceResource<DataServices>(std::move(services));
 
     // ---- 全局资源 ----

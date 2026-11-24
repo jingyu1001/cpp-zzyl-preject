@@ -8,7 +8,7 @@ namespace zzyl::data {
 
 class SeedUserService final : public IUserService {
 public:
-    SeedUserService();
+    explicit SeedUserService(bool emptyData = false);
     std::vector<UserRecord> List(const UserQuery& query) override;
     bool Add(const UserRecord& record, std::string* error) override;
     bool Update(const UserRecord& record, std::string* error) override;
@@ -24,7 +24,7 @@ private:
 
 class SeedRoomTypeService final : public IRoomTypeService {
 public:
-    SeedRoomTypeService();
+    explicit SeedRoomTypeService(bool emptyData = false);
     std::vector<RoomTypeRecord> List(const RoomTypeQuery& query) override;
     bool Add(const RoomTypeRecord& record, std::string* error) override;
     bool Update(const RoomTypeRecord& record, std::string* error) override;
@@ -38,7 +38,7 @@ private:
 
 class SeedNursingProjectService final : public INursingProjectService {
 public:
-    SeedNursingProjectService();
+    explicit SeedNursingProjectService(bool emptyData = false);
     std::vector<NursingProjectRecord> List(const NursingProjectQuery& query) override;
     bool Add(const NursingProjectRecord& record, std::string* error) override;
     bool Update(const NursingProjectRecord& record, std::string* error) override;

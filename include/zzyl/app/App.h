@@ -34,6 +34,7 @@ public:
         bool hidden = false;         // 隐藏窗口（自测时使用）
         bool selftest = false;       // 自测模式：自动截图/缩放/全屏并退出
         bool autoLogin = false;      // 启动后自动用 Mock 账号登录（演示/自测）
+        bool emptyData = false;      // 空态测试钩子：业务种子数据（用户/房型/护理项目）返回空集合
         std::string selftestDir;     // 截图与 metrics.json 输出目录
         int selftestFrames = 26;     // 自测运行帧数上限（保护）
     };

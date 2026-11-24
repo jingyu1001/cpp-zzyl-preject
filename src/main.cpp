@@ -19,6 +19,7 @@ void PrintUsage() {
         "  --height <px>       窗口高（默认 720）\n"
         "  --hidden            隐藏窗口启动（调试用）\n"
         "  --auto-login        启动后自动 Mock 登录并进入首页\n"
+        "  --empty-data        空态测试钩子：业务种子数据返回空集合（表格显示暂无数据）\n"
         "  --selftest [dir]    自测：隐藏窗口截图 1280x720 / 缩放 / F11 全屏，输出 BMP + metrics.json\n"
         "  --frames <n>        自测帧数上限（默认 16）\n"
         "  --help              显示本帮助\n"
@@ -54,6 +55,10 @@ int main(int argc, char** argv) {
         }
         if (argument == "--auto-login") {
             options.autoLogin = true;
+            continue;
+        }
+        if (argument == "--empty-data") {
+            options.emptyData = true;
             continue;
         }
         if (argument == "--selftest") {

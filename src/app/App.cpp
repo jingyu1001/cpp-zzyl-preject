@@ -79,13 +79,13 @@ int App::Run(const Options& options) {
                     m_selftestIcon.width, m_selftestIcon.height);
     }
 
-    RegisterAllModules(m_world, m_scheduler);
+    RegisterAllModules(m_world, m_scheduler, m_options.emptyData);
     m_scheduler.Start(m_world);
     UpdateWindowResource(FrameContext{});
 
-    std::printf("[App] 启动完成：窗口 %dx%d，系统 %zu 个，实体 %zu 个，资源 %zu 个\n",
+    std::printf("[App] 启动完成：窗口 %dx%d，系统 %zu 个，实体 %zu 个，资源 %zu 个，空数据模式=%s\n",
                 m_window.Width(), m_window.Height(), m_scheduler.Count(), m_world.EntityCount(),
-                m_world.ResourceCount());
+                m_world.ResourceCount(), m_options.emptyData ? "开" : "关");
 
     const auto startTime = std::chrono::steady_clock::now();
     auto lastTime = startTime;
@@ -475,6 +475,7 @@ void App::WriteSelfTestReport() {
                  m_hasChineseGlyph ? "true" : "false", m_chineseTextWidth);
     std::fprintf(file, "  \"commandQueueTimingOk\": %s,\n",
                  m_commandQueueTimingOk ? "true" : "false");
+    std::fprintf(file, "  \"emptyData\": %s,\n", m_options.emptyData ? "true" : "false");
     std::fprintf(file, "  \"wicTextureOk\": %s,\n", m_selftestIconReady ? "true" : "false");
     std::fprintf(file,
                  "  \"font\": {\"regular\": \"%s\", \"bold\": \"%s\", \"fontSize\": %.1f, "
