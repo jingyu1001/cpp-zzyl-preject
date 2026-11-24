@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <thread>
@@ -51,6 +52,12 @@ int App::Run(const Options& options) {
     m_options = options;
     m_selftest = options.selftest;
     m_selftestDir = options.selftestDir.empty() ? std::string("artifacts/selftest") : options.selftestDir;
+    // SQLite 路径：--db 优先；其次环境变量 ZZYL_DB_PATH；否则 ModuleRegistry 用默认 <exe>/data/zzyl.db
+    if (m_options.dbPath.empty()) {
+        if (const char* envDbPath = std::getenv("ZZYL_DB_PATH"); envDbPath != nullptr && envDbPath[0] != '\0') {
+            m_options.dbPath = envDbPath;
+        }
+    }
     if (m_selftest && !EnsureSelfTestDirectory()) {
         return 2;
     }
@@ -79,7 +86,7 @@ int App::Run(const Options& options) {
                     m_selftestIcon.width, m_selftestIcon.height);
     }
 
-    RegisterAllModules(m_world, m_scheduler, m_options.emptyData);
+    RegisterAllModules(m_world, m_scheduler, m_options.emptyData, m_options.dbPath);
     m_scheduler.Start(m_world);
     UpdateWindowResource(FrameContext{});
 
@@ -408,6 +415,102 @@ void App::SelfTestStep(const FrameContext& frame) {
             break;
         case 22:
             CaptureScreenshot("08_texture_wic_1280x720");
+            break;
+        case 23:
+            QueueNavigateForSelfTest("/enterQuit/checkIn");
+            break;
+        case 24:
+            CaptureScreenshot("09_checkin_list_1280x720");
+            break;
+        case 25:
+            QueueNavigateForSelfTest("/enterQuit/checkInForm");
+            break;
+        case 26:
+            CaptureScreenshot("10_checkin_form_1280x720");
+            break;
+        case 27:
+            if (auto* selection = m_world.TryResource<CheckInSelection>(); selection != nullptr) {
+                selection->id = 1;  // 自测详情帧使用确定性选中记录（列表首条）
+            }
+            QueueNavigateForSelfTest("/enterQuit/checkInInfo");
+            break;
+        case 28:
+            CaptureScreenshot("11_checkin_detail_1280x720");
+            break;
+        // ---- Sprint 3 集成验证包：M4 三页 1024×640 / 1920×1080 ----
+        case 29:
+            QueueNavigateForSelfTest("/enterQuit/checkIn");
+            break;
+        case 30:
+            std::printf("[selftest] M4 列表 -> 1024x640\n");
+            glfwSetWindowSize(m_window.Handle(), 1024, 640);
+            break;
+        case 32:
+            CaptureScreenshot("12_checkin_list_1024x640");
+            break;
+        case 33:
+            glfwSetWindowSize(m_window.Handle(), 1280, 720);
+            break;
+        case 34:
+            m_window.ToggleFullscreen();
+            break;
+        case 36:
+            CaptureScreenshot("13_checkin_list_1920x1080");
+            break;
+        case 37:
+            m_window.ToggleFullscreen();
+            glfwSetWindowSize(m_window.Handle(), 1280, 720);
+            break;
+        case 38:
+            QueueNavigateForSelfTest("/enterQuit/checkInForm");
+            break;
+        case 39:
+            std::printf("[selftest] M4 表单 -> 1024x640\n");
+            glfwSetWindowSize(m_window.Handle(), 1024, 640);
+            break;
+        case 41:
+            CaptureScreenshot("14_checkin_form_1024x640");
+            break;
+        case 42:
+            glfwSetWindowSize(m_window.Handle(), 1280, 720);
+            break;
+        case 43:
+            m_window.ToggleFullscreen();
+            break;
+        case 45:
+            CaptureScreenshot("15_checkin_form_1920x1080");
+            break;
+        case 46:
+            m_window.ToggleFullscreen();
+            glfwSetWindowSize(m_window.Handle(), 1280, 720);
+            break;
+        case 47:
+            if (auto* selection = m_world.TryResource<CheckInSelection>(); selection != nullptr) {
+                selection->id = 1;
+            }
+            QueueNavigateForSelfTest("/enterQuit/checkInInfo");
+            break;
+        case 48:
+            std::printf("[selftest] M4 详情 -> 1024x640\n");
+            glfwSetWindowSize(m_window.Handle(), 1024, 640);
+            break;
+        case 50:
+            CaptureScreenshot("16_checkin_detail_1024x640");
+            break;
+        case 51:
+            glfwSetWindowSize(m_window.Handle(), 1280, 720);
+            break;
+        case 52:
+            m_window.ToggleFullscreen();
+            break;
+        case 54:
+            CaptureScreenshot("17_checkin_detail_1920x1080");
+            break;
+        case 55:
+            m_window.ToggleFullscreen();
+            glfwSetWindowSize(m_window.Handle(), 1280, 720);
+            break;
+        case 56:
             m_selftestDone = true;
             break;
         default:

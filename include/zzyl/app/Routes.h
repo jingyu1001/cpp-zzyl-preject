@@ -17,6 +17,9 @@ enum class Route {
     SystemUser,
     RoomType,
     NursingProject,
+    CheckInList,    // M4 入退管理-入住办理（列表）
+    CheckInForm,    // M4 办理入住（表单）
+    CheckInDetail,  // M4 入住详情
 };
 
 // "/system/user" -> Route::SystemUser；未收录的路径返回 false。

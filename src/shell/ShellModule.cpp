@@ -104,9 +104,18 @@ constexpr float kFontSmallOffset = 2.0f;       // 辅助字号 = 基准字号 - 
 // 小工具
 // =============================================================================
 
-// 菜单项是否处于当前页（RouteState.path 为唯一来源；/index 与菜单 route 完全一致）
+// 菜单路径映射：M4 的表单/详情是「入住办理」列表的子页面，不在 MenuCatalog 里；
+// 统一映射到菜单叶子路径，用于菜单高亮 / 父目录自动展开 / 面包屑分组。
+std::string MenuPathForRoutePath(const std::string& path) {
+    if (path == "/enterQuit/checkInForm" || path == "/enterQuit/checkInInfo") {
+        return "/enterQuit/checkIn";
+    }
+    return path;
+}
+
+// 菜单项是否处于当前页（RouteState.path 为唯一来源；子页面已由 MenuPathForRoutePath 归一）
 bool IsActiveMenuRoute(const std::string& menuRoute, const std::string& currentPath) {
-    return !menuRoute.empty() && menuRoute == currentPath;
+    return !menuRoute.empty() && menuRoute == MenuPathForRoutePath(currentPath);
 }
 
 // 页面标题（面包屑 / 标签栏）
@@ -130,28 +139,33 @@ BreadcrumbContext BuildBreadcrumbContext(const data::MenuCatalog* catalog,
         context.pageTitle = "首页";
         return context;
     }
-    if (catalog != nullptr) {
-        for (const data::MenuEntry& root : catalog->roots) {
-            if (root.route == path) {
-                context.groupTitle.clear();
-                context.pageTitle = root.title;
-                return context;
-            }
-            for (const data::MenuEntry& child : root.children) {
-                if (child.route == path) {
-                    context.groupTitle = root.title;
-                    context.pageTitle = child.title;
-                    return context;
-                }
-            }
-        }
-    }
-    // 菜单未收录时按路由标题兜底
+    // 页面名优先取路由标题（M4 表单/详情标题与菜单名不同：办理入住/入住详情）
     Route route = Route::Dashboard;
     if (TryRouteFromPath(path, route)) {
         context.pageTitle = RouteTitle(route);
     } else {
         context.pageTitle = path;
+    }
+    const std::string menuPath = MenuPathForRoutePath(path);
+    if (catalog != nullptr) {
+        for (const data::MenuEntry& root : catalog->roots) {
+            if (root.route == menuPath) {
+                context.groupTitle.clear();
+                if (context.pageTitle.empty()) {
+                    context.pageTitle = root.title;
+                }
+                return context;
+            }
+            for (const data::MenuEntry& child : root.children) {
+                if (child.route == menuPath) {
+                    context.groupTitle = root.title;
+                    if (context.pageTitle.empty()) {
+                        context.pageTitle = child.title;
+                    }
+                    return context;
+                }
+            }
+        }
     }
     return context;
 }
@@ -162,10 +176,11 @@ void SyncExpandedRootForPath(ShellUiState& shellUi, const data::MenuCatalog* cat
     if (catalog == nullptr) {
         return;
     }
+    const std::string menuPath = MenuPathForRoutePath(path);
     for (std::size_t rootIndex = 0; rootIndex < catalog->roots.size(); ++rootIndex) {
         const data::MenuEntry& root = catalog->roots[rootIndex];
         for (const data::MenuEntry& child : root.children) {
-            if (child.route == path) {
+            if (child.route == menuPath) {
                 if (shellUi.expandedRoot != static_cast<int>(rootIndex)) {
                     shellUi.expandedRoot = static_cast<int>(rootIndex);
                     shellUi.scrollToRoot = static_cast<int>(rootIndex);
@@ -624,7 +639,8 @@ private:
             ui::Fill(drawList, hitRect, colors.sidebarHover);
         }
 
-        const bool active = IsActiveMenuRoute(row.entry->route, path);
+        const bool active =
+            !row.entry->HasChildren() && IsActiveMenuRoute(row.entry->route, path);
         const ImU32 textColor = active ? colors.sidebarTextActive : colors.sidebarText;
 
         if (isRoot) {
@@ -964,7 +980,8 @@ private:
         float cursorX = shell.tagsView.x + spec::kTagFirstLeft;
 
         // 绘制单个标签；selected=主色底白字白点，否则白底灰字描边
-        const auto drawTag = [&](const char* id, const std::string& title, bool selected) {
+        const auto drawTag = [&](const char* id, const std::string& title, bool selected,
+                                 const char* clickPath) {
             ui::ScopedFontSize tagFont(smallFont);
             const float textWidth = ui::TextSize(title.c_str()).x;
             float tagWidth = spec::kTagLeftPadding * 2.0f + textWidth;
@@ -993,8 +1010,8 @@ private:
                                layout::Rect{textLeft, tag.y, std::max(0.0f, tag.Right() - textLeft),
                                             tag.h},
                                selected ? colors.textInverse : colors.textRegular, title.c_str());
-            if (ui::InvisibleButtonAt(id, tag)) {
-                EnqueueNavigate(world, "/index");
+            if (ui::InvisibleButtonAt(id, tag) && clickPath != nullptr) {
+                EnqueueNavigate(world, clickPath);
             }
             if (ImGui::IsItemHovered() && !selected) {
                 ui::StrokeRounded(drawList, tag, theme::WithAlpha(colors.primary, 0.5f), 0.0f,
@@ -1003,10 +1020,11 @@ private:
             cursorX = tag.Right() + spec::kTagGap;
         };
 
-        drawTag("##tag_home", "首页", onHome);
+        drawTag("##tag_home", "首页", onHome, "/index");
         if (!onHome) {
             const std::string pageTitle = PageTitleForRoute(route);
-            drawTag("##tag_current", pageTitle, true);
+            // 当前页标签点击不跳转（Web 行为：仅展示当前页；关闭/切换 Sprint 4+）
+            drawTag("##tag_current", pageTitle, true, nullptr);
         }
 
         ui::EndFixedWindow();

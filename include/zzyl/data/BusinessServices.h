@@ -39,6 +39,81 @@ struct UserQuery {
     std::string endTime;
 };
 
+// ---- M4 入退管理-入住办理（check_in + check_in_family + nursing_levels） ----
+// 字段依据 Web《Sprint3_M4入住办理规格_v0.1》§2.2/§4.1/§4.2；本地 SQLite 组装，不依赖后端 detail 接口。
+struct CheckInFamilyRecord {
+    std::string name;   // 家属姓名
+    std::string phone;  // 家属联系方式
+    int kinship = 0;    // 0 子女 / 1 配偶 / 2 亲属 / 3 朋友 / 4 社工 / 5 其他
+};
+
+struct NursingLevelRecord {
+    int id = 0;
+    std::string name;   // 1号/2号/3号护理等级
+    double price = 0.0; // 元/月
+};
+
+struct CheckInRecord {
+    int id = 0;
+    // A. 基本信息（10 项）
+    std::string elderName;            // 老人姓名
+    std::string idCard;               // 身份证号
+    std::string birthday;             // 出生日期 yyyy-MM-dd
+    int age = 0;                      // 年龄
+    int sex = 0;                      // 1 男 / 0 女
+    std::string phone;                // 联系方式
+    std::string address;              // 家庭住址
+    std::string imagePath;            // 一寸照片（本地相对路径，空=无图）
+    std::string idCardPortraitImg;    // 身份证人像面
+    std::string idCardNationalEmblemImg;  // 身份证国徽面
+    // B. 家属信息（本地独立子表 check_in_family；Web 为 remark JSON）
+    std::vector<CheckInFamilyRecord> families;
+    // C. 入住配置（10 项）
+    std::string startDate;      // 入住开始 yyyy-MM-dd
+    std::string endDate;        // 入住结束
+    std::string feeStartDate;   // 费用开始
+    std::string feeEndDate;     // 费用结束
+    int nursingLevelId = 0;
+    std::string nursingLevelName;
+    std::string bedNumber;      // 入住床位号（如 104-1；本期不做楼层级联，文本输入）
+    int bedId = 0;
+    double deposit = 3000.0;    // 押金（默认 3000）
+    double nursingFee = 0.0;    // 护理费（由护理等级带出）
+    double bedFee = 0.0;        // 床位费（由房型价格带出）
+    double otherFees = 0.0;
+    double insurancePayment = 0.0;
+    double governmentSubsidy = 0.0;
+    // D. 签约办理（5 项）
+    std::string contractName;
+    std::string signDate;       // 签约日期
+    std::string thirdPartyName;
+    std::string thirdPartyPhone;
+    std::string agreementPath;  // 入住合同 PDF（本地相对路径，空=未上传）
+    // 状态 / 审计
+    int status = 0;             // 0 已入住 / 1 已退住
+    std::string createTime;
+    std::string remark;
+};
+
+struct CheckInQuery {
+    std::string elderName;  // 老人姓名模糊
+    std::string idCard;     // 身份证号（Web 为精确；本地用等于）
+};
+
+class ICheckInService {
+public:
+    virtual ~ICheckInService() = default;
+    virtual std::vector<CheckInRecord> List(const CheckInQuery& query) = 0;
+    virtual bool Get(int id, CheckInRecord* outRecord, std::string* error) = 0;
+    virtual bool Add(const CheckInRecord& record, std::string* error) = 0;
+    virtual bool Update(const CheckInRecord& record, std::string* error) = 0;
+    virtual bool Remove(const std::vector<int>& ids, std::string* error) = 0;
+    // 护理等级字典（Web `/nursing/level/all` 缺失；C++ 内置 3 条：1500/2000/3000）
+    virtual std::vector<NursingLevelRecord> NursingLevels() = 0;
+};
+
+// ---- 服务接口集合（Sprint 3：SQLite 实现） ----
+
 class IUserService {
 public:
     virtual ~IUserService() = default;

@@ -34,6 +34,7 @@
 #include "zzyl/render/Theme.h"
 #include "zzyl/render/UiDraw.h"
 #include "zzyl/ui/Widgets.h"
+#include "zzyl/utils/CsvExport.h"
 
 namespace zzyl {
 namespace {
@@ -44,6 +45,15 @@ constexpr float kFormLabelWidth = 80.0f;  // 表单 label 宽（§3.5：单列 l
 constexpr float kFormCellPaddingY = 14.0f;  // 表单项 32 高 + 间距 28 → 上下各 14
 constexpr float kDialogWidth = 500.0f;    // 房型弹窗宽（§3.5）
 constexpr float kPhotoBoxSize = 148.0f;   // 照片选择框 148×148（§3.8 / §4.2）
+
+// 房型图片素材库（assets/roomtypes/ 5 张，与 SQLite 种子 photo_path 对应）
+const char* const kRoomTypePhotoLibrary[] = {
+    "assets/roomtypes/单人套房.png",   "assets/roomtypes/双人套房.png",
+    "assets/roomtypes/豪华单人间.png", "assets/roomtypes/豪华双人间.png",
+    "assets/roomtypes/普通单人间.png",
+};
+constexpr int kRoomTypePhotoCount =
+    static_cast<int>(sizeof(kRoomTypePhotoLibrary) / sizeof(kRoomTypePhotoLibrary[0]));
 // Toast 绘制归属：外壳（ShellRenderSystem）每帧统一 DrawToasts，页面只 PushToast，
 // 避免同一提示被绘制两遍（lead 2026-11-24 确认）。
 constexpr bool kDrawToastsInPage = false;
@@ -66,6 +76,7 @@ struct RoomTypePageState {
     int editingId = 0;
     bool editingEnabled = true;
     std::string editingCreateTime;
+    std::string photoPath;  // 当前选择的照片相对路径（空 = 无图；素材库挑选）
     char name[64] = {};
     char bedCountText[16] = {};
     char priceText[16] = {};
@@ -221,6 +232,7 @@ void OpenAddDialog(RoomTypePageState& state) {
     state.editingId = 0;
     state.editingEnabled = true;
     state.editingCreateTime.clear();
+    state.photoPath.clear();
     std::snprintf(state.name, sizeof(state.name), "%s", "");
     std::snprintf(state.bedCountText, sizeof(state.bedCountText), "%s", "1");
     std::snprintf(state.priceText, sizeof(state.priceText), "%s", "");
@@ -237,6 +249,7 @@ void OpenEditDialog(RoomTypePageState& state, const data::RoomTypeRecord& record
     state.editingId = record.id;
     state.editingEnabled = record.enabled;
     state.editingCreateTime = record.createTime;
+    state.photoPath = record.photoPath;
     std::snprintf(state.name, sizeof(state.name), "%s", record.name.c_str());
     std::snprintf(state.bedCountText, sizeof(state.bedCountText), "%d", record.bedCount);
     std::snprintf(state.priceText, sizeof(state.priceText), "%.2f", record.price);
@@ -282,7 +295,7 @@ bool SubmitForm(World& world, data::IRoomTypeService& service, RoomTypePageState
     record.bedCount = bedCount;
     record.price = price;
     record.introduction = state.introduction;
-    record.photoPath.clear();  // 无上传通道：保持空 → 表格图片列显示占位（D-23）
+    record.photoPath = state.photoPath;  // 新增/编辑保留所选图片（素材库选择，空=无图）
     record.remark = state.remark;
     record.enabled = state.editing ? state.editingEnabled : true;
     record.createTime = state.editing ? state.editingCreateTime : NowText();
@@ -413,26 +426,149 @@ void DrawFieldError(const std::string& message) {
     ImGui::PopStyleColor();
 }
 
-// 照片选择框：无上传能力（D-23），显示 148×148 占位块并标注二期
-void DrawPhotoPlaceholder() {
+// 虚线边框（弹窗照片预览框用）
+void DrawDashedFrame(ImDrawList* drawList, const layout::Rect& rect, ImU32 color, float thickness,
+                     float dash, float gap) {
+    for (float x = rect.x; x < rect.Right(); x += dash + gap) {
+        const float end = std::min(x + dash, rect.Right());
+        drawList->AddLine(ImVec2(x, rect.y), ImVec2(end, rect.y), color, thickness);
+        drawList->AddLine(ImVec2(x, rect.Bottom()), ImVec2(end, rect.Bottom()), color, thickness);
+    }
+    for (float y = rect.y; y < rect.Bottom(); y += dash + gap) {
+        const float end = std::min(y + dash, rect.Bottom());
+        drawList->AddLine(ImVec2(rect.x, y), ImVec2(rect.x, end), color, thickness);
+        drawList->AddLine(ImVec2(rect.Right(), y), ImVec2(rect.Right(), end), color, thickness);
+    }
+}
+
+// 照片选择：148×148 预览（虚线框 / 底 #FAFAFA / contain）+ 素材库 5 张 + 「无图」选项，
+// 纹理走 TextureCache（WIC）；加载失败回退占位，不崩溃。
+void DrawPhotoPicker(World& world, RoomTypePageState& state) {
     const theme::Palette& colors = theme::Colors();
-    const ImVec2 boxPos = ImGui::GetCursorScreenPos();
-    ImGui::Dummy(ImVec2(kPhotoBoxSize, kPhotoBoxSize));
+    render::TextureCache* textures = world.TryResource<render::TextureCache>();
+    constexpr float previewSize = kPhotoBoxSize;
+    constexpr float thumbSize = 44.0f;
+    constexpr float thumbGap = 4.0f;
+    constexpr int columns = 3;
+    constexpr int itemCount = kRoomTypePhotoCount + 1;  // 5 张素材 + 无图
+    constexpr int rows = (itemCount + columns - 1) / columns;
+    const float gridWidth =
+        static_cast<float>(columns) * thumbSize + static_cast<float>(columns - 1) * thumbGap;
+    const float gridHeight =
+        static_cast<float>(rows) * thumbSize + static_cast<float>(rows - 1) * thumbGap;
+    const float labelHeight = 16.0f;
+    const float blockWidth = previewSize + 12.0f + gridWidth;
+    const float blockHeight = std::max(previewSize, labelHeight + gridHeight);
+
+    const ImVec2 blockStart = ImGui::GetCursorScreenPos();
+    ImGui::Dummy(ImVec2(blockWidth, blockHeight));
+    ImGui::SetCursorScreenPos(blockStart);
+    ImGui::InvisibleButton("##room_photo_picker", ImVec2(blockWidth, blockHeight));
+    const bool clicked = ImGui::IsItemClicked();
+    const ImVec2 mouse = ImGui::GetIO().MousePos;
     ImDrawList* drawList = ImGui::GetWindowDrawList();
-    const layout::Rect boxRect{boxPos.x, boxPos.y, kPhotoBoxSize, kPhotoBoxSize};
-    ui::FillRounded(drawList, boxRect, colors.lightBlock, 4.0f);
-    ui::StrokeRounded(drawList, boxRect, colors.borderAxis, 4.0f, 1.0f);
-    ui::ScopedFontSize hintFont(12.0f);
-    ui::TextCentered(drawList, layout::Rect{boxPos.x, boxPos.y + kPhotoBoxSize * 0.5f - 22.0f,
-                                            kPhotoBoxSize, 20.0f},
-                     colors.textMuted, "暂无图片");
-    ui::TextCentered(drawList, layout::Rect{boxPos.x, boxPos.y + kPhotoBoxSize * 0.5f + 2.0f,
-                                            kPhotoBoxSize, 20.0f},
-                     colors.textMuted, "上传能力二期接入（D-23）");
+
+    // ---- 预览（148×148：虚线框 + #FAFAFA 底 + contain）----
+    const layout::Rect previewRect{blockStart.x, blockStart.y, previewSize, previewSize};
+    ui::FillRounded(drawList, previewRect, IM_COL32(0xFA, 0xFA, 0xFA, 0xFF), 4.0f);
+    DrawDashedFrame(drawList, previewRect, colors.borderAxis, 1.0f, 5.0f, 4.0f);
+    if (!state.photoPath.empty()) {
+        bool drawn = false;
+        if (textures != nullptr) {
+            const render::Texture& texture = textures->Get(state.photoPath.c_str());
+            if (texture.Valid()) {
+                layout::Rect inner = previewRect;
+                inner.x += 4.0f;
+                inner.y += 4.0f;
+                inner.w -= 8.0f;
+                inner.h -= 8.0f;
+                render::DrawImageContain(drawList, texture, inner);
+                drawn = true;
+            }
+        }
+        if (!drawn) {
+            ui::ScopedFontSize hintFont(12.0f);
+            ui::TextCentered(drawList, previewRect, colors.textMuted, "图片加载失败，已回退占位");
+        }
+    } else {
+        ui::ScopedFontSize hintFont(12.0f);
+        ui::TextCentered(drawList,
+                         layout::Rect{previewRect.x, previewRect.CenterY() - 10.0f, previewRect.w,
+                                      20.0f},
+                         colors.textMuted, "暂无图片");
+    }
+
+    // ---- 素材库（5 张素材 + 无图；点击切换并写回 state.photoPath）----
+    const float gridX = blockStart.x + previewSize + 12.0f;
+    const float gridY = blockStart.y + labelHeight;
+    {
+        ui::ScopedFontSize labelFont(11.0f);
+        drawList->AddText(ImVec2(gridX, blockStart.y), colors.textMuted, "从素材库选择");
+    }
+    for (int item = 0; item < itemCount; ++item) {
+        const int column = item % columns;
+        const int row = item / columns;
+        const layout::Rect thumb{gridX + static_cast<float>(column) * (thumbSize + thumbGap),
+                                 gridY + static_cast<float>(row) * (thumbSize + thumbGap), thumbSize,
+                                 thumbSize};
+        const bool isNone = item >= kRoomTypePhotoCount;
+        const std::string itemPath =
+            isNone ? std::string() : std::string(kRoomTypePhotoLibrary[item]);
+        const bool selected = isNone ? state.photoPath.empty() : (state.photoPath == itemPath);
+        const bool hovered = mouse.x >= thumb.x && mouse.x <= thumb.Right() && mouse.y >= thumb.y &&
+                             mouse.y <= thumb.Bottom();
+        ui::FillRounded(drawList, thumb, colors.lightBlock, 3.0f);
+        if (isNone) {
+            DrawDashedFrame(drawList, thumb, colors.borderAxis, 1.0f, 3.0f, 3.0f);
+            ui::ScopedFontSize noneFont(11.0f);
+            ui::TextCentered(drawList, thumb, colors.textMuted, "无图");
+        } else if (textures != nullptr) {
+            const render::Texture& texture = textures->Get(itemPath.c_str());
+            if (texture.Valid()) {
+                render::DrawImageCover(drawList, texture, thumb);
+            } else {
+                ui::ScopedFontSize noneFont(10.0f);
+                ui::TextCentered(drawList, thumb, colors.textMuted, "无图");
+            }
+        }
+        if (hovered && !selected) {
+            ui::FillRounded(drawList, thumb, theme::WithAlpha(colors.primary, 0.08f), 3.0f);
+        }
+        if (selected) {
+            ui::StrokeRounded(drawList, thumb, colors.primary, 3.0f, 2.0f);
+        }
+        if (clicked && hovered) {
+            state.photoPath = itemPath;
+        }
+    }
+}
+
+// 导出当前查询结果（CSV：exports/ 目录，UTF-8 BOM，自动建目录）
+void ExportRoomTypes(World& world, const RoomTypePageState& state) {
+    std::vector<std::string> headers = {"序号", "房间图片", "房型类型", "床位费用",
+                                        "房型介绍", "创建时间", "状态"};
+    std::vector<std::vector<std::string>> rows;
+    rows.reserve(state.results.size());
+    for (std::size_t index = 0; index < state.results.size(); ++index) {
+        const data::RoomTypeRecord& record = state.results[index];
+        rows.push_back({std::to_string(index + 1), record.photoPath, record.name,
+                        FormatPrice(record.price), record.introduction, record.createTime,
+                        record.enabled ? "启用" : "禁用"});
+    }
+    const utils::CsvExportResult result = utils::ExportCsv("room_types", headers, rows);
+    if (result.ok) {
+        const std::size_t separator = result.path.find_last_of("\\/");
+        const std::string fileName =
+            separator == std::string::npos ? result.path : result.path.substr(separator + 1);
+        PushToast(world,
+                  "导出成功：" + fileName + "（共 " + std::to_string(rows.size()) + " 条）",
+                  ui::ToastType::Success);
+    } else {
+        PushToast(world, "导出失败：" + result.error, ui::ToastType::Error);
+    }
 }
 
 void DrawRoomTypeForm(World& world, data::IRoomTypeService& service, RoomTypePageState& state) {
-    (void)world;
     (void)service;
     const FormStyleGuard styleGuard;
     const float introHeight = ImGui::GetIO().DisplaySize.y < 700.0f ? 48.0f : 64.0f;
@@ -479,12 +615,12 @@ void DrawRoomTypeForm(World& world, data::IRoomTypeService& service, RoomTypePag
         ImGui::InputTextMultiline("##room_intro", state.introduction, sizeof(state.introduction),
                                   ImVec2(ImGui::GetContentRegionAvail().x, introHeight));
 
-        // 照片（占位，D-23）
+        // 照片（素材库选择：148×148 预览 + 5 张素材 + 无图）
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         DrawFormLabel("照片", false);
         ImGui::TableNextColumn();
-        DrawPhotoPlaceholder();
+        DrawPhotoPicker(world, state);
 
         // 备注
         ImGui::TableNextRow();
@@ -577,12 +713,15 @@ public:
             return;
         }
 
-        // ---- ① 工具栏：新增（80×32 浅青底）----
+        // ---- ① 工具栏：新增 + 导出（CSV 当前查询结果）----
         std::vector<ui::ToolbarButton> toolbarButtons;
         toolbarButtons.push_back(ui::ToolbarButton{ui::ToolbarKind::Add, "新增", true});
+        toolbarButtons.push_back(ui::ToolbarButton{ui::ToolbarKind::Export, "导出", true});
         const ui::ToolbarResult toolbar = ui::DrawToolbar(layoutState.toolbar, toolbarButtons);
         if (toolbar.clicked == 0) {
             OpenAddDialog(*state);
+        } else if (toolbar.clicked == 1) {
+            ExportRoomTypes(world, *state);
         }
 
         // ---- ② 数据表格 ----

@@ -30,3 +30,10 @@ artifacts/
 selftest_out/
 _verify*/
 _verify-*/
+
+# SQLite 本地库（默认在 exe 目录 data/，也可能被 --db 指到仓库内）
+data/
+*.db
+*.db-wal
+*.db-shm
+exports/

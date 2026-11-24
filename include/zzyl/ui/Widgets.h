@@ -90,6 +90,7 @@ struct TableDrawOptions {
     bool showCheckbox = true;  // 勾选列（宽 50）
     bool showIndex = false;    // 序号列（宽 50）
     std::vector<std::string> actionLabels;  // Actions 列的默认按钮（行内 cells 未提供时使用）
+    float rowHeight = 49.0f;   // 数据行高（M4 列表传 60；0 表示用默认 49，向后兼容）
 };
 
 struct TableResult {

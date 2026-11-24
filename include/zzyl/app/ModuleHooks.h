@@ -25,4 +25,9 @@ void RegisterDashboardModule(World& world, SystemScheduler& scheduler);
 void RegisterRoomTypeModule(World& world, SystemScheduler& scheduler);
 void RegisterNursingProjectModule(World& world, SystemScheduler& scheduler);
 
+// Sprint 3：M4 入退管理-入住办理（列表 dev1 / 表单+详情 dev2）
+void RegisterCheckInListModule(World& world, SystemScheduler& scheduler);
+void RegisterCheckInFormModule(World& world, SystemScheduler& scheduler);
+void RegisterCheckInDetailModule(World& world, SystemScheduler& scheduler);
+
 }  // namespace zzyl

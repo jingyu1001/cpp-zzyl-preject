@@ -479,9 +479,13 @@ bool DrawSwitchControl(const char* id, const Rect& hitRect, bool enabled, bool i
     return pressed;
 }
 
-void DrawStatusTagControl(const Rect& cellRect, bool enabled) {
+void DrawStatusTagControl(const Rect& cellRect, bool enabled, const std::string& label) {
     ImDrawList* drawList = ImGui::GetWindowDrawList();
-    const char* text = enabled ? "启用" : "禁用";
+    // 标签文字：默认「启用/禁用」；M4 等业务页可传自定义文案（如 已入住/已退住）。
+    // 颜色仍由 enabled 决定（绿/红），保持现有页面行为不变。
+    const bool customLabel = !label.empty() && label != "1" && label != "0" && label != "启用" &&
+                             label != "禁用";
+    const char* text = customLabel ? label.c_str() : (enabled ? "启用" : "禁用");
     ui::ScopedFontSize font(spec::kFontTiny);
     const float width = std::min(cellRect.w, TextWidth(text) + 16.0f);
     const Rect tag = CenterIn(cellRect, width, 24.0f);
@@ -779,6 +783,8 @@ TableResult DrawDataTable(const Rect& area, const std::vector<TableColumn>& colu
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     const ImGuiIO& io = ImGui::GetIO();
     const bool interactiveWindow = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+    // 数据行高：契约 TableDrawOptions.rowHeight（0 = 默认 49；M4 列表传 60）
+    const float rowHeight = options.rowHeight > 0.0f ? options.rowHeight : spec::kTableRowHeight;
 
     const auto isChecked = [&checkedIds](int id) {
         return std::find(checkedIds.begin(), checkedIds.end(), id) != checkedIds.end();
@@ -808,7 +814,7 @@ TableResult DrawDataTable(const Rect& area, const std::vector<TableColumn>& colu
         baseWidth = 1.0f;
     }
 
-    const float contentHeight = static_cast<float>(rows.size()) * spec::kTableRowHeight;
+    const float contentHeight = static_cast<float>(rows.size()) * rowHeight;
     float availWidth = area.w;
     float bodyHeight = area.h - spec::kTableHeaderHeight;
     bool needVertical = contentHeight > bodyHeight + 0.5f;
@@ -852,7 +858,7 @@ TableResult DrawDataTable(const Rect& area, const std::vector<TableColumn>& colu
         if (io.KeyShift && needHorizontal) {
             scrollX = std::clamp(scrollX - io.MouseWheel * 60.0f, 0.0f, maxScrollX);
         } else if (needVertical) {
-            scrollY = std::clamp(scrollY - io.MouseWheel * spec::kTableRowHeight, 0.0f, maxScrollY);
+            scrollY = std::clamp(scrollY - io.MouseWheel * rowHeight, 0.0f, maxScrollY);
         } else if (needHorizontal) {
             // 无纵向滚动时，滚轮直接横向滚动（另有 Shift+滚轮 / 拖动滚动条两种方式）
             scrollX = std::clamp(scrollX - io.MouseWheel * 60.0f, 0.0f, maxScrollX);
@@ -920,8 +926,8 @@ TableResult DrawDataTable(const Rect& area, const std::vector<TableColumn>& colu
         const std::string emptyText;
         for (std::size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex) {
             const TableRow& row = rows[rowIndex];
-            const float rowY = originY + static_cast<float>(rowIndex) * spec::kTableRowHeight;
-            const Rect rowRect{area.x, rowY, contentWidth, spec::kTableRowHeight};
+            const float rowY = originY + static_cast<float>(rowIndex) * rowHeight;
+            const Rect rowRect{area.x, rowY, contentWidth, rowHeight};
             if (rowRect.Bottom() <= bodyRect.y || rowRect.y >= bodyRect.Bottom()) {
                 continue;
             }
@@ -940,7 +946,7 @@ TableResult DrawDataTable(const Rect& area, const std::vector<TableColumn>& colu
             char idBuffer[96];
 
             if (options.showCheckbox) {
-                const Rect checkCell{cellX, rowY, spec::kTableCheckWidth, spec::kTableRowHeight};
+                const Rect checkCell{cellX, rowY, spec::kTableCheckWidth, rowHeight};
                 std::snprintf(idBuffer, sizeof(idBuffer), "##zzyl_row_check_%d",
                               static_cast<int>(rowIndex));
                 const bool checked = isChecked(row.id);
@@ -961,7 +967,7 @@ TableResult DrawDataTable(const Rect& area, const std::vector<TableColumn>& colu
             }
 
             if (options.showIndex) {
-                const Rect indexCell{cellX, rowY, spec::kTableIndexWidth, spec::kTableRowHeight};
+                const Rect indexCell{cellX, rowY, spec::kTableIndexWidth, rowHeight};
                 char indexText[16];
                 std::snprintf(indexText, sizeof(indexText), "%d", static_cast<int>(rowIndex) + 1);
                 DrawTableCellText(drawList, indexCell, indexText, spec::kFontBase, el::kTextLabel,
@@ -972,7 +978,7 @@ TableResult DrawDataTable(const Rect& area, const std::vector<TableColumn>& colu
             for (std::size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
                 const TableColumn& column = columns[columnIndex];
                 const float cellW = std::max(1.0f, column.width * columnScale);
-                const Rect cellRect{cellX, rowY, cellW, spec::kTableRowHeight};
+                const Rect cellRect{cellX, rowY, cellW, rowHeight};
                 const std::string& text =
                     columnIndex < row.cells.size() ? row.cells[columnIndex] : emptyText;
                 const bool cellHovered = fullyVisible && IsHovered(cellRect);
@@ -989,7 +995,7 @@ TableResult DrawDataTable(const Rect& area, const std::vector<TableColumn>& colu
                     }
                     case CellKind::Image: {
                         const float imageSize =
-                            std::min(spec::kTableImageSize, spec::kTableRowHeight - 4.0f);
+                            std::min(spec::kTableImageSize, rowHeight - 4.0f);
                         const Rect imageRect = CenterIn(cellRect, imageSize, imageSize);
                         const render::Texture* texture = nullptr;
                         if (textures != nullptr && !text.empty()) {
@@ -1012,13 +1018,13 @@ TableResult DrawDataTable(const Rect& area, const std::vector<TableColumn>& colu
                         break;
                     }
                     case CellKind::StatusTag:
-                        DrawStatusTagControl(cellRect, row.enabled);
+                        DrawStatusTagControl(cellRect, row.enabled, text);
                         break;
                     case CellKind::Switch: {
                         std::snprintf(idBuffer, sizeof(idBuffer), "##zzyl_row_switch_%d",
                                       static_cast<int>(rowIndex));
                         const Rect switchHit{cellRect.CenterX() - 24.0f, cellRect.y, 48.0f,
-                                             spec::kTableRowHeight};
+                                             rowHeight};
                         const bool switchPressed =
                             DrawSwitchControl(idBuffer, switchHit, row.enabled, fullyVisible);
                         if (fullyVisible) {
@@ -1048,7 +1054,7 @@ TableResult DrawDataTable(const Rect& area, const std::vector<TableColumn>& colu
                              ++actionIndex) {
                             const float labelWidth = TextWidth(labels[actionIndex].c_str());
                             const Rect hitRect{actionX - 2.0f, rowY, labelWidth + 4.0f,
-                                               spec::kTableRowHeight};
+                                               rowHeight};
                             std::snprintf(idBuffer, sizeof(idBuffer),
                                           "##zzyl_row_action_%d_%d", static_cast<int>(rowIndex),
                                           static_cast<int>(actionIndex));
@@ -1067,7 +1073,7 @@ TableResult DrawDataTable(const Rect& area, const std::vector<TableColumn>& colu
                                 childClicked = true;
                             }
                             const float textY =
-                                rowY + (spec::kTableRowHeight - ImGui::GetFontSize()) * 0.5f;
+                                rowY + (rowHeight - ImGui::GetFontSize()) * 0.5f;
                             ui::Text(drawList, ImVec2(actionX, textY), theme::Colors().primary,
                                      labels[actionIndex].c_str());
                             if (actionHovered) {

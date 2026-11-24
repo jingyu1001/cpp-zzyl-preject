@@ -20,6 +20,7 @@ void PrintUsage() {
         "  --hidden            隐藏窗口启动（调试用）\n"
         "  --auto-login        启动后自动 Mock 登录并进入首页\n"
         "  --empty-data        空态测试钩子：业务种子数据返回空集合（表格显示暂无数据）\n"
+        "  --db <path>         SQLite 数据库路径（默认 <exe目录>/data/zzyl.db；也可用 ZZYL_DB_PATH）\n"
         "  --selftest [dir]    自测：隐藏窗口截图 1280x720 / 缩放 / F11 全屏，输出 BMP + metrics.json\n"
         "  --frames <n>        自测帧数上限（默认 16）\n"
         "  --help              显示本帮助\n"
@@ -59,6 +60,10 @@ int main(int argc, char** argv) {
         }
         if (argument == "--empty-data") {
             options.emptyData = true;
+            continue;
+        }
+        if (argument == "--db" && index + 1 < argc) {
+            options.dbPath = argv[++index];
             continue;
         }
         if (argument == "--selftest") {

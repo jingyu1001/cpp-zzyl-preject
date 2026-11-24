@@ -51,4 +51,21 @@ private:
     int m_nextId = 200;
 };
 
+// M4 入住办理内存种子（仅 --empty-data/DB 不可用时的回退；空态模式返回空集合）
+// 字段与 SQLite 种子一致（依据 M4 规格 v0.1；脏数据已清洗、缺失配置/合同已补全）。
+class SeedCheckInService final : public ICheckInService {
+public:
+    explicit SeedCheckInService(bool emptyData = false);
+    std::vector<CheckInRecord> List(const CheckInQuery& query) override;
+    bool Get(int id, CheckInRecord* outRecord, std::string* error) override;
+    bool Add(const CheckInRecord& record, std::string* error) override;
+    bool Update(const CheckInRecord& record, std::string* error) override;
+    bool Remove(const std::vector<int>& ids, std::string* error) override;
+    std::vector<NursingLevelRecord> NursingLevels() override;
+
+private:
+    std::vector<CheckInRecord> m_records;
+    int m_nextId = 200;
+};
+
 }  // namespace zzyl::data

@@ -165,11 +165,11 @@ SeedRoomTypeService::SeedRoomTypeService(bool emptyData) {
     if (emptyData) {
         return;  // --empty-data 空态测试钩子：不注入种子数据
     }
-    m_roomTypes.push_back(RoomTypeRecord{1, "单人套房", 0, 4000.0, "宽敞舒适的套房，配备独立卫浴与护理呼叫系统", "", "", true, "2023-09-26 15:57:50"});
-    m_roomTypes.push_back(RoomTypeRecord{2, "双人套房", 0, 6000.0, "适合夫妻或朋友两人居住，空间宽敞", "", "", true, "2023-09-26 15:58:51"});
-    m_roomTypes.push_back(RoomTypeRecord{3, "豪华单人间", 0, 3000.0, "豪华装修的单人房间，采光充足", "", "", true, "2023-09-26 15:59:33"});
-    m_roomTypes.push_back(RoomTypeRecord{4, "豪华双人间", 0, 4500.0, "精心装修的双人房间，设施齐全", "", "", true, "2023-09-26 16:00:03"});
-    m_roomTypes.push_back(RoomTypeRecord{5, "普通单人间", 0, 2000.0, "简洁实用的单人间，性价比高", "", "", true, "2023-09-26 16:00:27"});
+    m_roomTypes.push_back(RoomTypeRecord{1, "单人套房", 0, 4000.0, "宽敞舒适的套房，配备独立卫浴与护理呼叫系统", "assets/roomtypes/单人套房.png", "", true, "2023-09-26 15:57:50"});
+    m_roomTypes.push_back(RoomTypeRecord{2, "双人套房", 0, 6000.0, "适合夫妻或朋友两人居住，空间宽敞", "assets/roomtypes/双人套房.png", "", true, "2023-09-26 15:58:51"});
+    m_roomTypes.push_back(RoomTypeRecord{3, "豪华单人间", 0, 3000.0, "豪华装修的单人房间，采光充足", "assets/roomtypes/豪华单人间.png", "", true, "2023-09-26 15:59:33"});
+    m_roomTypes.push_back(RoomTypeRecord{4, "豪华双人间", 0, 4500.0, "精心装修的双人房间，设施齐全", "assets/roomtypes/豪华双人间.png", "", true, "2023-09-26 16:00:03"});
+    m_roomTypes.push_back(RoomTypeRecord{5, "普通单人间", 0, 2000.0, "简洁实用的单人间，性价比高", "assets/roomtypes/普通单人间.png", "", true, "2023-09-26 16:00:27"});
     m_roomTypes.push_back(RoomTypeRecord{116, "标准双人间", 10, 1500.0, "适合好朋友一起居住", "", "", true, "2024-09-12 22:52:36"});
 }
 
@@ -329,6 +329,143 @@ std::vector<std::string> SeedNursingProjectService::ImageLibrary() {
         "assets/icons/洗脸@2x.png",     "assets/icons/洗脚@2x.png",
         "assets/icons/谈心@2x.png",     "assets/icons/公共空间清洁@2x.png",
         "assets/icons/复建运动@2x.png", "assets/icons/翻身拍背@2x.png",
+    };
+}
+
+// =============================================================================
+// M4 入住办理内存种子（5 条；依据 M4 规格 v0.1 §1.7/§4.3，已清洗脏数据、补全配置/合同）
+// 仅 --empty-data / DB 不可用回退；正常运行走 SQLite。
+// =============================================================================
+SeedCheckInService::SeedCheckInService(bool emptyData) {
+    if (emptyData) {
+        return;
+    }
+    const auto addRecord = [this](int id, const char* name, const char* idCard, const char* birthday,
+                                  int age, int sex, const char* phone, const char* address,
+                                  const char* bedNumber, int levelId, const char* levelName,
+                                  double bedFee, const char* startDate, const char* endDate,
+                                  const char* createTime, const char* contractName,
+                                  const char* signDate) {
+        CheckInRecord record;
+        record.id = id;
+        record.elderName = name;
+        record.idCard = idCard;
+        record.birthday = birthday;
+        record.age = age;
+        record.sex = sex;
+        record.phone = phone;
+        record.address = address;
+        record.bedNumber = bedNumber;
+        record.nursingLevelId = levelId;
+        record.nursingLevelName = levelName;
+        record.nursingFee = levelId == 76 ? 1500.0 : (levelId == 77 ? 2000.0 : 3000.0);
+        record.bedFee = bedFee;
+        record.deposit = 3000.0;
+        record.startDate = startDate;
+        record.endDate = endDate;
+        record.feeStartDate = startDate;
+        record.feeEndDate = endDate;
+        record.contractName = contractName;
+        record.signDate = signDate;
+        record.createTime = createTime;
+        record.status = 0;
+        m_records.push_back(record);
+    };
+
+    addRecord(1, "张三", "132123196712131234", "1967-12-13", 57, 1, "13211223322",
+              "河南省郑州市金水区花园路 88 号", "104-1", 77, "2号护理等级", 4500.0,
+              "2024-08-27", "2024-09-30", "2024-08-27 16:43:20", "张三的入住合同", "2024-08-27");
+    addRecord(2, "李天龙", "132123196712131239", "1967-12-13", 57, 1, "13211224433",
+              "河南省郑州市中原区建设路 12 号", "104-2", 76, "1号护理等级", 4500.0,
+              "2024-08-27", "2024-09-30", "2024-08-27 16:50:09", "李天龙的入住合同", "2024-08-27");
+    addRecord(3, "老李", "132123195612132345", "1956-12-13", 68, 1, "13211225544",
+              "河南省郑州市二七区大学路 66 号", "101-2", 77, "2号护理等级", 3000.0,
+              "2024-09-12", "2024-10-31", "2024-09-12 18:51:36", "老李的入住合同", "2024-09-12");
+    addRecord(4, "老李头儿", "410725196904056698", "1969-04-05", 55, 1, "13211226655",
+              "河南省新乡市红旗区人民路 9 号", "101-1", 77, "2号护理等级", 3000.0,
+              "2024-09-12", "2024-10-31", "2024-09-12 19:10:23", "老李头儿的入住合同", "2024-09-12");
+    addRecord(5, "魏忠语", "210102196703292842", "1967-03-29", 58, 1, "13211227766",
+              "辽宁省沈阳市和平区中山路 21 号", "403-1", 77, "2号护理等级", 2000.0,
+              "2026-03-05", "2026-04-30", "2026-03-05 20:49:06", "魏忠语的入住合同", "2026-03-05");
+
+    m_records[0].families.push_back(CheckInFamilyRecord{"张小三", "13900001111", 0});
+    m_records[1].families.push_back(CheckInFamilyRecord{"李小龙", "13900002222", 0});
+    m_records[2].families.push_back(CheckInFamilyRecord{"李芳", "13900003333", 0});
+    m_records[3].families.push_back(CheckInFamilyRecord{"李强", "13900004444", 0});
+    m_records[4].families.push_back(CheckInFamilyRecord{"魏小语", "13900005555", 0});
+    m_records[4].families.push_back(CheckInFamilyRecord{"魏强", "13900006666", 2});
+}
+
+std::vector<CheckInRecord> SeedCheckInService::List(const CheckInQuery& query) {
+    std::vector<CheckInRecord> result;
+    for (const CheckInRecord& record : m_records) {
+        if (!ContainsNoCase(record.elderName, query.elderName)) {
+            continue;
+        }
+        if (!query.idCard.empty() && record.idCard != query.idCard) {
+            continue;
+        }
+        result.push_back(record);
+    }
+    return result;
+}
+
+bool SeedCheckInService::Get(int id, CheckInRecord* outRecord, std::string* error) {
+    for (const CheckInRecord& record : m_records) {
+        if (record.id == id) {
+            if (outRecord) {
+                *outRecord = record;
+            }
+            return true;
+        }
+    }
+    if (error) *error = "入住记录不存在";
+    return false;
+}
+
+bool SeedCheckInService::Add(const CheckInRecord& record, std::string* error) {
+    if (record.elderName.empty() || record.idCard.empty()) {
+        if (error) *error = "老人姓名/身份证号不能为空";
+        return false;
+    }
+    CheckInRecord added = record;
+    added.id = m_nextId++;
+    if (added.status != 1) {
+        added.status = 0;
+    }
+    m_records.push_back(added);
+    return true;
+}
+
+bool SeedCheckInService::Update(const CheckInRecord& record, std::string* error) {
+    for (CheckInRecord& existing : m_records) {
+        if (existing.id == record.id) {
+            existing = record;
+            return true;
+        }
+    }
+    if (error) *error = "入住记录不存在";
+    return false;
+}
+
+bool SeedCheckInService::Remove(const std::vector<int>& ids, std::string* error) {
+    if (ids.empty()) {
+        if (error) *error = "请选择要删除的入住记录";
+        return false;
+    }
+    m_records.erase(std::remove_if(m_records.begin(), m_records.end(),
+                                   [&ids](const CheckInRecord& record) {
+                                       return std::find(ids.begin(), ids.end(), record.id) != ids.end();
+                                   }),
+                    m_records.end());
+    return true;
+}
+
+std::vector<NursingLevelRecord> SeedCheckInService::NursingLevels() {
+    return {
+        NursingLevelRecord{76, "1号护理等级", 1500.0},
+        NursingLevelRecord{77, "2号护理等级", 2000.0},
+        NursingLevelRecord{78, "3号护理等级", 3000.0},
     };
 }
 

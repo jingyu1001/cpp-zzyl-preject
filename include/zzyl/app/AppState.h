@@ -91,6 +91,7 @@ struct DataServices {
     std::unique_ptr<data::IUserService> user;
     std::unique_ptr<data::IRoomTypeService> roomType;
     std::unique_ptr<data::INursingProjectService> nursingProject;
+    std::unique_ptr<data::ICheckInService> checkIn;  // M4 入住办理
 };
 
 // 看板数据快照资源（由 DataBootstrapSystem 加载，渲染层只读）
@@ -137,6 +138,11 @@ struct NavItem {
     int depth = 0;  // 0 = 顶级
     bool active = false;
     bool hasChildren = false;
+};
+
+// M4 跨页面上下文：入住办理列表 -> 详情/编辑 的选中记录 id（页面写、详情读）
+struct CheckInSelection {
+    int id = 0;
 };
 
 }  // namespace zzyl

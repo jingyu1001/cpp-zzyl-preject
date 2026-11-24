@@ -32,6 +32,7 @@ set(ZZYL_DEPS_ROOT "C:/Users/ASUS/Desktop/C++" CACHE PATH "第三方库根目录
 set(ZZYL_GLFW_DIR   "${ZZYL_DEPS_ROOT}/glfw-3.4.bin.WIN64")
 set(ZZYL_IMGUI_DIR  "${ZZYL_DEPS_ROOT}/imgui-1.92.2b/imgui-1.92.2b")
 set(ZZYL_GLAD_DIR   "${ZZYL_DEPS_ROOT}/glad")
+set(ZZYL_SQLITE_DIR "${ZZYL_DEPS_ROOT}/sqlite3-amalgamation-3540100/sqlite-amalgamation-3540100")
 set(ZZYL_GLFW_LIB   "${ZZYL_GLFW_DIR}/lib-vc2022/glfw3.lib")
 
 foreach(dep_file
@@ -41,7 +42,9 @@ foreach(dep_file
         "${ZZYL_IMGUI_DIR}/backends/imgui_impl_glfw.cpp"
         "${ZZYL_IMGUI_DIR}/backends/imgui_impl_opengl3.cpp"
         "${ZZYL_GLAD_DIR}/include/glad/glad.h"
-        "${ZZYL_GLAD_DIR}/src/glad.c")
+        "${ZZYL_GLAD_DIR}/src/glad.c"
+        "${ZZYL_SQLITE_DIR}/sqlite3.c"
+        "${ZZYL_SQLITE_DIR}/sqlite3.h")
     if(NOT EXISTS "${dep_file}")
         message(FATAL_ERROR
             "缺少第三方依赖文件：${dep_file}\n"
@@ -85,6 +88,16 @@ target_include_directories(imgui SYSTEM PUBLIC
 add_library(glad STATIC "${ZZYL_GLAD_DIR}/src/glad.c")
 target_include_directories(glad SYSTEM PUBLIC "${ZZYL_GLAD_DIR}/include")
 
+# SQLite3 amalgamation（Sprint 3；不复制大文件进仓库，引用绝对路径 + ZZYL_DEPS_ROOT）
+add_library(sqlite3 STATIC "${ZZYL_SQLITE_DIR}/sqlite3.c")
+target_include_directories(sqlite3 SYSTEM PUBLIC "${ZZYL_SQLITE_DIR}")
+target_compile_definitions(sqlite3 PRIVATE
+    SQLITE_THREADSAFE=1
+    SQLITE_OMIT_LOAD_EXTENSION
+    SQLITE_DQS=0
+    SQLITE_DEFAULT_MEMSTATUS=0
+)
+
 add_library(glfw STATIC IMPORTED)
 set_target_properties(glfw PROPERTIES
     IMPORTED_LOCATION "${ZZYL_GLFW_LIB}"
@@ -115,6 +128,7 @@ set(ZZYL_APP_SOURCES
     src/data/MockServices.cpp
     src/data/MenuCatalog.cpp
     src/data/SeedServices.cpp
+    src/data/SqliteData.cpp
 
     # 应用层
     src/app/App.cpp
@@ -125,6 +139,9 @@ set(ZZYL_APP_SOURCES
     # 通用组件（cpp-dev1）
     src/ui/Widgets.cpp
 
+    # 工具（csv 导出骨架，cpp-dev3 可选实现）
+    src/utils/CsvExport.cpp
+
     # 模块（按文件归属拆给 3 名程序员）
     src/shell/ShellModule.cpp        # cpp-dev1
     src/pages/LoginModule.cpp        # cpp-dev2
@@ -132,6 +149,9 @@ set(ZZYL_APP_SOURCES
     src/pages/DashboardModule.cpp    # cpp-dev3
     src/pages/RoomTypeModule.cpp     # cpp-dev3（Sprint 2 M2）
     src/pages/NursingProjectModule.cpp  # cpp-dev3（Sprint 2 M3）
+    src/pages/CheckInListModule.cpp     # cpp-dev1（Sprint 3 M4 列表）
+    src/pages/CheckInFormModule.cpp     # cpp-dev2（Sprint 3 M4 表单）
+    src/pages/CheckInDetailModule.cpp   # cpp-dev2（Sprint 3 M4 详情）
 )
 
 add_executable(zzyl_desktop ${ZZYL_APP_SOURCES})
@@ -142,6 +162,7 @@ target_link_libraries(zzyl_desktop PRIVATE
     imgui
     glfw
     glad
+    sqlite3
     opengl32
     user32
     gdi32
