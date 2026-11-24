@@ -13,13 +13,16 @@
 
 namespace zzyl {
 
-// cpp-dev1：应用外壳（顶栏 / 侧边栏 / 内容区 / 导航切换）
+// cpp-dev1：应用外壳（顶栏 / 侧边栏 / 内容区 / 导航切换）+ 通用列表页组件（Sprint 2）
 void RegisterShellModule(World& world, SystemScheduler& scheduler);
 
-// cpp-dev2：登录页（表单 / 验证码占位 / 模拟登录 / 跳转）
+// cpp-dev2：登录页（Sprint 1）；Sprint 2：系统管理-用户管理页
 void RegisterLoginModule(World& world, SystemScheduler& scheduler);
+void RegisterSystemUserModule(World& world, SystemScheduler& scheduler);
 
-// cpp-dev3：首页看板（统计卡 / 4 个图表 / 排行列表）
+// cpp-dev3：首页看板（Sprint 1）；Sprint 2：在住管理-房型设置页 + 服务管理-护理项目页
 void RegisterDashboardModule(World& world, SystemScheduler& scheduler);
+void RegisterRoomTypeModule(World& world, SystemScheduler& scheduler);
+void RegisterNursingProjectModule(World& world, SystemScheduler& scheduler);
 
 }  // namespace zzyl

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "zzyl/app/AppState.h"
+#include "zzyl/app/Routes.h"
 
 namespace zzyl {
 namespace {
@@ -133,10 +134,9 @@ public:
         for (const CommandQueue::Command& command : queue->commands) {
             switch (command.type) {
                 case CommandQueue::Type::Navigate: {
-                    if (command.arg0 == "/dashboard" || command.arg0 == "/index") {
-                        routeState->current = Route::Dashboard;
-                    } else if (command.arg0 == "/login") {
-                        routeState->current = Route::Login;
+                    Route route = Route::Dashboard;
+                    if (TryRouteFromPath(command.arg0, route)) {
+                        routeState->current = route;
                     }
                     break;
                 }
@@ -151,6 +151,8 @@ public:
                     break;
             }
         }
+        // path 始终由 Route 归一化（菜单高亮 / 面包屑 / 标签栏唯一来源）
+        routeState->path = RoutePath(routeState->current);
     }
 };
 

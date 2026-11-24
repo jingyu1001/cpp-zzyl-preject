@@ -1,16 +1,17 @@
 // =============================================================================
-// 应用外壳（cpp-dev1 负责）：侧边栏（Logo + 菜单树）/ 顶栏 / 标签栏
+// 应用外壳（cpp-dev1 负责）：侧边栏（Logo + 菜单树）/ 顶栏 / 标签栏 / Toast 层
 //
-// 设计要点（依据 docs/tasks/Sprint1_cpp-dev1_应用外壳.md 与架构设计 §3/§6）：
-//  - 数据只读：ShellLayout（每帧布局）/ RouteState（当前页）/ AuthSession（用户）/
-//    MenuCatalog（菜单树）；交互一律入队 CommandQueue（Navigate），不直接写路由/会话；
-//  - 外壳私有表现状态 ShellUiState（菜单展开项、滚动偏移）在 RegisterShellModule 中
-//    注册为 World 资源，不使用全局静态变量；
+// 设计要点（依据 Sprint 2 任务单与架构设计 v0.2 §6）：
+//  - 数据只读：ShellLayout / RouteState（path 为唯一路由来源）/ AuthSession /
+//    MenuCatalog；交互一律入队 CommandQueue（Navigate），不直接写路由/会话；
+//  - 外壳私有表现状态 ShellUiState（菜单展开项、滚动偏移、上次路径）在
+//    RegisterShellModule 中注册为 World 资源，不使用全局静态变量；
 //  - 所有容器坐标一律从 ShellLayout / LayoutTokens / 锚定矩形推导；
-//    spec 命名空间里只有 UI 复刻规格规定的"视觉尺寸"（图标/头像/字号等固定值）；
-//  - 字体作用域一律用 ui::ScopedFontSize / ScopedBoldFont，并在 EndFixedWindow 前结束；
-//  - 菜单总高超出 sidebarMenu 时：鼠标滚轮滚动 + DrawList 裁剪 + 自绘细滚动条；
-//  - 折叠态只显示图标（居中）、hover 出中文 tooltip；点击含子项的一级菜单会恢复展开。
+//  - 5 页可达（Login/Dashboard/SystemUser/RoomType/NursingProject），其余菜单点击
+//    由外壳 PushToast 提示"后续迭代接入"；
+//  - 进入子页面自动展开父目录（同级唯一展开）；面包屑 首页 / 组名 / 页面名；
+//    标签栏 首页固定标签 + 当前页标签；
+//  - 字体作用域一律用 ui::ScopedFontSize / ScopedBoldFont，并在 EndFixedWindow 前结束。
 // =============================================================================
 
 #include <algorithm>
@@ -25,10 +26,12 @@
 
 #include "zzyl/app/AppState.h"
 #include "zzyl/app/ModuleHooks.h"
+#include "zzyl/app/Routes.h"
 #include "zzyl/core/System.h"
 #include "zzyl/data/MenuCatalog.h"
 #include "zzyl/render/Theme.h"
 #include "zzyl/render/UiDraw.h"
+#include "zzyl/ui/Widgets.h"
 
 namespace zzyl {
 namespace {
@@ -46,6 +49,8 @@ struct ShellUiState {
     // 内容区滚动（外壳作为内容视口所有者维护；超出 pageViewport 高度才可滚）
     float contentScroll = 0.0f;
     float contentMaxScroll = 0.0f;
+    // 上一次的 RouteState.path（用于"进入子页面自动展开父目录"）
+    std::string lastPath = "/login";
 };
 
 // 外壳视觉常量：均来自《UI复刻规格 §4/§5/§6》的固定视觉尺寸。
@@ -61,17 +66,17 @@ constexpr float kMenuChevronReserve = 44.0f;   // 一级项右侧给展开箭头
 constexpr float kChevronRightInset = 24.0f;    // 箭头中心距菜单右边缘
 constexpr float kChevronSize = 9.0f;           // 展开箭头尺寸
 constexpr float kSubMenuIconLeft = 40.0f;      // 二级菜单图标左缩进（规格 §4.1：左缩进 40）
-constexpr float kSubMenuItemIndent = 70.0f;   // 二级菜单文字起点（图标 40 + 14 + 16 间距）
+constexpr float kSubMenuItemIndent = 70.0f;    // 二级菜单文字起点（图标 40 + 14 + 16 间距）
 constexpr float kSubItemRightPadding = 20.0f;  // 二级菜单右内边距
 constexpr float kMenuTopPadding = 6.0f;        // 菜单内容顶部留白
 constexpr float kMenuWheelStep = 0.55f;        // 滚轮步长（一级菜单项高的倍数）
 constexpr float kScrollbarWidth = 3.0f;        // 侧边栏菜单细滚动条宽
 constexpr float kScrollbarInset = 3.0f;        // 滚动条与菜单边缘间距
 constexpr float kScrollbarMinThumb = 24.0f;    // 滚动条滑块最小高度
-constexpr float kContentScrollbarWidth = 6.0f;    // 内容区滚动条宽（规格 §3.3：6px）
-constexpr float kContentScrollbarInset = 2.0f;    // 内容区滚动条右边距
-constexpr float kContentScrollbarMinThumb = 30.0f;  // 内容区滑块最小高度
-constexpr float kContentWheelStepRatio = 4.0f;    // 内容区滚轮步长 = rowGap * 4
+constexpr float kContentScrollbarWidth = 6.0f;       // 内容区滚动条宽（规格 §3.3：6px）
+constexpr float kContentScrollbarInset = 2.0f;       // 内容区滚动条右边距
+constexpr float kContentScrollbarMinThumb = 30.0f;   // 内容区滑块最小高度
+constexpr float kContentWheelStepRatio = 4.0f;       // 内容区滚轮步长 = rowGap * 4
 constexpr float kBreadcrumbLeftGap = 8.0f;     // 汉堡键 -> 面包屑间距
 constexpr float kBreadcrumbRightGap = 16.0f;   // 面包屑 -> 右侧功能区间距
 constexpr float kAvatarRatio = 0.6f;           // 头像直径 / 顶栏高（50 * 0.6 = 30）
@@ -87,9 +92,10 @@ constexpr float kHamburgerLineRatio = 0.4f;    // 汉堡线宽 / 按钮边长（
 constexpr float kHamburgerSpacingRatio = 0.1f; // 汉堡线间距 / 按钮边长（5/50）
 constexpr float kHamburgerThickness = 1.6f;    // 汉堡线粗
 constexpr float kTagVerticalInset = 4.0f;      // 标签上下间距（标签高 26 = 34 - 8）
-constexpr float kTagLeftPadding = 8.0f;         // 标签左右内边距
+constexpr float kTagLeftPadding = 8.0f;        // 标签左右内边距
 constexpr float kTagDotSize = 8.0f;            // 标签白点 8×8
 constexpr float kTagDotGap = 5.0f;             // 白点与文字间距
+constexpr float kTagGap = 5.0f;                // 标签之间的间距
 constexpr float kTagFirstLeft = 15.0f;         // 首个标签左边距
 constexpr float kFontSmallOffset = 2.0f;       // 辅助字号 = 基准字号 - 2
 }  // namespace spec
@@ -98,24 +104,76 @@ constexpr float kFontSmallOffset = 2.0f;       // 辅助字号 = 基准字号 - 
 // 小工具
 // =============================================================================
 
-// 本迭代已实现的路由：首页看板（RouteSystem 同时接受 /index 与 /dashboard）
-bool IsRoutableRoute(const std::string& route) {
-    return route == "/index" || route == "/dashboard";
+// 菜单项是否处于当前页（RouteState.path 为唯一来源；/index 与菜单 route 完全一致）
+bool IsActiveMenuRoute(const std::string& menuRoute, const std::string& currentPath) {
+    return !menuRoute.empty() && menuRoute == currentPath;
 }
 
-// 当前路由是否命中该菜单项（首页高亮）
-bool IsActiveMenuRoute(const std::string& route, const RouteState* state) {
-    if (state == nullptr || state->current != Route::Dashboard) {
-        return false;
-    }
-    return route == "/index" || route == "/dashboard";
-}
-
+// 页面标题（面包屑 / 标签栏）
 const char* PageTitleForRoute(const RouteState* state) {
-    if (state != nullptr && state->current == Route::Dashboard) {
+    if (state == nullptr) {
         return "首页";
     }
-    return "登录";
+    return RouteTitle(state->current);
+}
+
+// 面包屑上下文：首页 / 组名 / 页面名
+struct BreadcrumbContext {
+    std::string groupTitle;  // 无则空（首页）
+    std::string pageTitle;
+};
+
+BreadcrumbContext BuildBreadcrumbContext(const data::MenuCatalog* catalog,
+                                         const std::string& path) {
+    BreadcrumbContext context;
+    if (path == "/index" || path.empty()) {
+        context.pageTitle = "首页";
+        return context;
+    }
+    if (catalog != nullptr) {
+        for (const data::MenuEntry& root : catalog->roots) {
+            if (root.route == path) {
+                context.groupTitle.clear();
+                context.pageTitle = root.title;
+                return context;
+            }
+            for (const data::MenuEntry& child : root.children) {
+                if (child.route == path) {
+                    context.groupTitle = root.title;
+                    context.pageTitle = child.title;
+                    return context;
+                }
+            }
+        }
+    }
+    // 菜单未收录时按路由标题兜底
+    Route route = Route::Dashboard;
+    if (TryRouteFromPath(path, route)) {
+        context.pageTitle = RouteTitle(route);
+    } else {
+        context.pageTitle = path;
+    }
+    return context;
+}
+
+// 进入子页面时自动展开父目录（同级唯一展开）
+void SyncExpandedRootForPath(ShellUiState& shellUi, const data::MenuCatalog* catalog,
+                             const std::string& path) {
+    if (catalog == nullptr) {
+        return;
+    }
+    for (std::size_t rootIndex = 0; rootIndex < catalog->roots.size(); ++rootIndex) {
+        const data::MenuEntry& root = catalog->roots[rootIndex];
+        for (const data::MenuEntry& child : root.children) {
+            if (child.route == path) {
+                if (shellUi.expandedRoot != static_cast<int>(rootIndex)) {
+                    shellUi.expandedRoot = static_cast<int>(rootIndex);
+                    shellUi.scrollToRoot = static_cast<int>(rootIndex);
+                }
+                return;
+            }
+        }
+    }
 }
 
 void EnqueueNavigate(World& world, const std::string& route) {
@@ -124,6 +182,13 @@ void EnqueueNavigate(World& world, const std::string& route) {
         command.type = CommandQueue::Type::Navigate;
         command.arg0 = route;
         queue->commands.push_back(std::move(command));
+    }
+}
+
+// 不可达菜单点击提示（渲染层 → ToastState 资源，由 ToastRenderSystem 绘制）
+void PushUnavailableToast(World& world, const std::string& title) {
+    if (auto* toasts = world.TryResource<ui::ToastState>()) {
+        ui::PushToast(*toasts, "「" + title + "」将在后续迭代接入", ui::ToastType::Warning);
     }
 }
 
@@ -158,7 +223,7 @@ std::string EllipsizeToWidth(const char* text, float maxWidth) {
 }
 
 // =============================================================================
-// 图标绘制（Sprint 1 用几何占位；真实 SVG 图标资源 Sprint 2 接入）
+// 图标绘制（Sprint 1 用几何占位；真实 SVG 图标资源 Sprint 3 接入）
 // =============================================================================
 void DrawHamburger(ImDrawList* drawList, const layout::Rect& rect, ImU32 color) {
     const float lineWidth = rect.h * spec::kHamburgerLineRatio;
@@ -209,7 +274,7 @@ struct MenuRow {
     int rootIndex = -1;
     int childIndex = -1;
     const data::MenuEntry* entry = nullptr;
-    float top = 0.0f;     // 相对菜单内容顶部的偏移（未含滚动）
+    float top = 0.0f;  // 相对菜单内容顶部的偏移（未含滚动）
     float height = 0.0f;
 };
 
@@ -259,7 +324,7 @@ MenuLayout BuildMenuLayout(const data::MenuCatalog& catalog, int expandedRoot, b
 // 依据 UI复刻规格 §3/§4/§5/§6：
 //  - 侧边栏 200（折叠 54）深色 #304156，Logo 区 50，一级菜单 56 / 二级 50
 //  - 顶栏 50 白底：汉堡键 + 面包屑 + 快捷键提示 + 用户区（头像/昵称）
-//  - 标签栏 34 白底：首页固定标签 #00B8A0 白字 + 8px 白点
+//  - 标签栏 34 白底：首页固定标签 + 当前页标签
 //  - 内容区只画底色，具体页面由页面渲染系统负责（不遮挡页面）
 // -----------------------------------------------------------------------------
 class ShellRenderSystem final : public ISystem {
@@ -280,6 +345,15 @@ public:
         const UiState* ui = world.TryResource<UiState>();
         const bool collapsed = ui != nullptr && ui->sidebarCollapsed;
 
+        // 路由变化：进入子页面时自动展开父目录（同级唯一展开）
+        if (ShellUiState* shellUi = world.TryResource<ShellUiState>()) {
+            if (shellUi->lastPath != route->path) {
+                shellUi->lastPath = route->path;
+                SyncExpandedRootForPath(*shellUi, world.TryResource<data::MenuCatalog>(),
+                                        route->path);
+            }
+        }
+
         // 背景层（先于所有固定窗口）：整窗 + 内容区底色
         ImDrawList* background = ImGui::GetBackgroundDrawList();
         ui::Fill(background, shell->viewport, colors.background);
@@ -289,9 +363,9 @@ public:
         //（页面渲染系统在本系统之后运行，读到的 ScreenRect 已是滚动后的坐标）
         UpdateContentScroll(world, *shell);
 
-        DrawSidebar(world, *shell, colors, collapsed, route);
+        DrawSidebar(world, *shell, colors, collapsed, route->path);
         DrawTopbar(world, *shell, colors, route);
-        DrawTagsView(world, *shell, colors);
+        DrawTagsView(world, *shell, colors, route);
         DrawContentScrollbar(world, *shell, colors);
     }
 
@@ -387,9 +461,10 @@ private:
                         spec::kContentScrollbarWidth * 0.5f);
         ui::EndFixedWindow();
     }
+
     // ------------------------------ 侧边栏 ------------------------------
     void DrawSidebar(World& world, const layout::ShellLayout& shell, const theme::Palette& colors,
-                     bool collapsed, const RouteState* route) {
+                     bool collapsed, const std::string& path) {
         if (!ui::BeginFixedWindow("##shell_sidebar", shell.sidebar)) {
             ui::EndFixedWindow();
             return;
@@ -398,7 +473,7 @@ private:
         ui::Fill(drawList, shell.sidebar, colors.sidebar);
 
         DrawSidebarLogo(drawList, shell, colors, collapsed);
-        DrawSidebarMenu(world, shell, colors, collapsed, route);
+        DrawSidebarMenu(world, shell, colors, collapsed, path);
 
         ui::EndFixedWindow();
     }
@@ -431,13 +506,12 @@ private:
         }
         const std::string title = EllipsizeToWidth("中州养老", textWidth);
         ui::ScopedBoldFont logoTitleFont(shell.tokens.baseFontSize);
-        ui::TextLeftMiddle(drawList,
-                           layout::Rect{textLeft, logoArea.y, textWidth, logoArea.h},
+        ui::TextLeftMiddle(drawList, layout::Rect{textLeft, logoArea.y, textWidth, logoArea.h},
                            colors.textInverse, title.c_str());
     }
 
     void DrawSidebarMenu(World& world, const layout::ShellLayout& shell,
-                         const theme::Palette& colors, bool collapsed, const RouteState* route) {
+                         const theme::Palette& colors, bool collapsed, const std::string& path) {
         const data::MenuCatalog* catalog = world.TryResource<data::MenuCatalog>();
         ShellUiState* shellUi = world.TryResource<ShellUiState>();
         if (catalog == nullptr || shellUi == nullptr || shell.sidebarMenu.Empty()) {
@@ -503,7 +577,7 @@ private:
             if (rowRect.Bottom() <= menuArea.y || rowRect.y >= menuArea.Bottom()) {
                 continue;
             }
-            DrawMenuRow(world, shell, colors, collapsed, route, row, rowRect);
+            DrawMenuRow(world, shell, colors, collapsed, path, row, rowRect);
         }
 
         drawList->PopClipRect();
@@ -513,7 +587,7 @@ private:
     }
 
     void DrawMenuRow(World& world, const layout::ShellLayout& shell, const theme::Palette& colors,
-                     bool collapsed, const RouteState* route, const MenuRow& row,
+                     bool collapsed, const std::string& path, const MenuRow& row,
                      const layout::Rect& rowRect) {
         if (row.entry == nullptr) {
             return;
@@ -547,10 +621,10 @@ private:
         const bool pressed = ui::InvisibleButtonAt(buttonId, hitRect);
         const bool hovered = ImGui::IsItemHovered();
         if (hovered) {
-            ui::Fill(drawList, hitRect, isRoot ? colors.sidebarHover : colors.sidebarHover);
+            ui::Fill(drawList, hitRect, colors.sidebarHover);
         }
 
-        const bool active = isRoot && IsActiveMenuRoute(row.entry->route, route);
+        const bool active = IsActiveMenuRoute(row.entry->route, path);
         const ImU32 textColor = active ? colors.sidebarTextActive : colors.sidebarText;
 
         if (isRoot) {
@@ -564,8 +638,7 @@ private:
                 const float rightReserve =
                     row.entry->HasChildren() ? spec::kMenuChevronReserve : spec::kSidebarPadding;
                 const float textLeft = rowRect.x + spec::kMenuTextLeft;
-                const float textWidth =
-                    std::max(0.0f, rowRect.Right() - rightReserve - textLeft);
+                const float textWidth = std::max(0.0f, rowRect.Right() - rightReserve - textLeft);
                 if (textWidth > 0.0f) {
                     const std::string title = EllipsizeToWidth(row.entry->title.c_str(), textWidth);
                     ui::ScopedFontSize menuFont(tokens.baseFontSize);
@@ -575,7 +648,8 @@ private:
                 }
                 if (row.entry->HasChildren()) {
                     DrawChevron(drawList,
-                                ImVec2(rowRect.Right() - spec::kChevronRightInset, rowRect.CenterY()),
+                                ImVec2(rowRect.Right() - spec::kChevronRightInset,
+                                       rowRect.CenterY()),
                                 spec::kChevronSize, theme::WithAlpha(colors.sidebarText, 0.75f),
                                 expanded);
                 }
@@ -586,8 +660,8 @@ private:
             DrawMenuIcon(drawList, ImVec2(iconCenterX, rowRect.CenterY()), spec::kMenuIconSize,
                          textColor);
             const float textLeft = rowRect.x + spec::kSubMenuItemIndent;
-            const float textWidth = std::max(
-                0.0f, rowRect.Right() - spec::kSubItemRightPadding - textLeft);
+            const float textWidth =
+                std::max(0.0f, rowRect.Right() - spec::kSubItemRightPadding - textLeft);
             if (textWidth > 0.0f) {
                 const std::string title = EllipsizeToWidth(row.entry->title.c_str(), textWidth);
                 ui::ScopedFontSize subMenuFont(tokens.baseFontSize);
@@ -598,18 +672,15 @@ private:
         }
 
         // ---- 悬停提示 ----
-        if (hovered) {
-            if (isRoot && collapsed) {
-                ImGui::SetTooltip("%s", row.entry->title.c_str());
-            } else if (!isRoot && !IsRoutableRoute(row.entry->route)) {
-                ImGui::SetTooltip("「%s」模块规划中，Sprint 2 接入", row.entry->title.c_str());
-            }
+        if (hovered && isRoot && collapsed) {
+            ImGui::SetTooltip("%s", row.entry->title.c_str());
         }
 
         // ---- 点击交互 ----
         if (!pressed) {
             return;
         }
+        const bool routable = IsRoutablePath(row.entry->route);
         if (isRoot) {
             if (row.entry->HasChildren()) {
                 if (collapsed) {
@@ -625,11 +696,15 @@ private:
                     shellUi->expandedRoot = row.rootIndex;
                     shellUi->scrollToRoot = row.rootIndex;
                 }
-            } else if (IsRoutableRoute(row.entry->route)) {
+            } else if (routable) {
                 EnqueueNavigate(world, row.entry->route);
+            } else {
+                PushUnavailableToast(world, row.entry->title);
             }
-        } else if (IsRoutableRoute(row.entry->route)) {
+        } else if (routable) {
             EnqueueNavigate(world, row.entry->route);
+        } else {
+            PushUnavailableToast(world, row.entry->title);
         }
     }
 
@@ -654,8 +729,7 @@ private:
             std::max(spec::kScrollbarMinThumb,
                      trackHeight * viewportContentHeight / (viewportContentHeight + maxScroll));
         const float travel = std::max(0.0f, trackHeight - thumbHeight);
-        const float thumbTop =
-            trackTop + travel * layout::Clamp(scroll / maxScroll, 0.0f, 1.0f);
+        const float thumbTop = trackTop + travel * layout::Clamp(scroll / maxScroll, 0.0f, 1.0f);
         ui::FillRounded(drawList, layout::Rect{x, thumbTop, width, thumbHeight},
                         theme::WithAlpha(colors.textInverse, 0.38f), width * 0.5f);
     }
@@ -753,24 +827,80 @@ private:
         }
         {
             ui::ScopedBoldFont nicknameFont(tokens.baseFontSize);
-            ui::TextRightMiddle(drawList, layout::Rect{0.0f, shell.topbar.y, nicknameRect.Right(),
-                                                       shell.topbar.h},
+            ui::TextRightMiddle(drawList,
+                                layout::Rect{0.0f, shell.topbar.y, nicknameRect.Right(),
+                                             shell.topbar.h},
                                 colors.textPrimary, nickname);
         }
 
-        // 面包屑：当前页面名（登录页不画外壳；看板页为「首页」）
+        // 面包屑：首页 / 组名 / 页面名（当前项 #97A8BE，其余项可点击回首页）
+        const data::MenuCatalog* catalog = world.TryResource<data::MenuCatalog>();
+        const std::string currentPath = route != nullptr ? route->path : std::string("/index");
+        const BreadcrumbContext crumb = BuildBreadcrumbContext(catalog, currentPath);
         const float breadcrumbLeft = hamburger.Right() + spec::kBreadcrumbLeftGap;
         const float breadcrumbRight = hintRect.x - spec::kBreadcrumbRightGap;
-        const layout::Rect breadcrumb{breadcrumbLeft, shell.topbar.y,
-                                      std::max(0.0f, breadcrumbRight - breadcrumbLeft),
-                                      shell.topbar.h};
-        if (!breadcrumb.Empty()) {
-            const std::string title = EllipsizeToWidth(PageTitleForRoute(route), breadcrumb.w);
+        const float breadcrumbWidth = std::max(0.0f, breadcrumbRight - breadcrumbLeft);
+        if (breadcrumbWidth > 0.0f) {
             ui::ScopedFontSize breadcrumbFont(tokens.baseFontSize);
-            ui::TextLeftMiddle(drawList, breadcrumb, colors.breadcrumbCurrent, title.c_str());
+            const float itemGap = 6.0f;
+            const float slashWidth = ui::TextSize("/").x;
+            const ImU32 linkColor = colors.textRegular;
+            const ImU32 slashColor = theme::WithAlpha(colors.textSecondary, 0.7f);
+            float cursor = breadcrumbLeft;
+            const auto drawBreadcrumbItem = [&](const std::string& text, ImU32 color,
+                                                bool clickable) -> bool {
+                const float width = ui::TextSize(text.c_str()).x;
+                if (cursor + width > breadcrumbRight + 0.5f) {
+                    // 空间不足：截断当前项后结束
+                    const std::string shown =
+                        EllipsizeToWidth(text.c_str(), std::max(0.0f, breadcrumbRight - cursor));
+                    if (!shown.empty()) {
+                        ui::TextLeftMiddle(drawList,
+                                           layout::Rect{cursor, shell.topbar.y,
+                                                        std::max(0.0f, breadcrumbRight - cursor),
+                                                        shell.topbar.h},
+                                           color, shown.c_str());
+                    }
+                    return false;
+                }
+                const layout::Rect itemRect{cursor, shell.topbar.y, width, shell.topbar.h};
+                ui::TextLeftMiddle(drawList, itemRect, color, text.c_str());
+                if (clickable) {
+                    const std::string id = "##crumb_" + text;
+                    if (ui::InvisibleButtonAt(id.c_str(), itemRect)) {
+                        EnqueueNavigate(world, "/index");
+                    }
+                    if (ImGui::IsItemHovered()) {
+                        ui::Line(drawList, itemRect.x, itemRect.Bottom() - 12.0f, itemRect.Right(),
+                                 itemRect.Bottom() - 12.0f, color, 1.0f);
+                    }
+                }
+                cursor = itemRect.Right() + itemGap;
+                return true;
+            };
+            const auto drawBreadcrumbSlash = [&]() {
+                if (cursor + slashWidth > breadcrumbRight + 0.5f) {
+                    return;
+                }
+                ui::TextLeftMiddle(drawList,
+                                   layout::Rect{cursor, shell.topbar.y, slashWidth,
+                                                shell.topbar.h},
+                                   slashColor, "/");
+                cursor += slashWidth + itemGap;
+            };
+            if (!crumb.groupTitle.empty()) {
+                drawBreadcrumbItem("首页", linkColor, true);
+                drawBreadcrumbSlash();
+                drawBreadcrumbItem(crumb.groupTitle, linkColor, false);
+                drawBreadcrumbSlash();
+                drawBreadcrumbItem(crumb.pageTitle, colors.breadcrumbCurrent, false);
+            } else {
+                // 首页：当前项（点击无操作，保持 Web 视觉）
+                drawBreadcrumbItem(crumb.pageTitle, colors.breadcrumbCurrent, false);
+            }
         }
 
-        // 用户区点击 → 在用户区下方弹出「个人中心」占位提示（Sprint 2 接入）
+        // 用户区点击 → 在用户区下方弹出「个人中心」占位提示（后续迭代接入）
         if (userPressed) {
             ImGui::OpenPopup("##shell_user_popup");
         }
@@ -795,7 +925,7 @@ private:
             ImGui::Separator();
             {
                 ui::ScopedFontSize popupFont(std::max(10.0f, tokens.baseFontSize - 1.0f));
-                ImGui::TextUnformatted("账号资料 / 退出登录将在 Sprint 2 接入");
+                ImGui::TextUnformatted("账号资料 / 退出登录将在后续迭代接入");
             }
             ImGui::EndPopup();
         }
@@ -806,8 +936,9 @@ private:
     }
 
     // ------------------------------ 标签栏 ------------------------------
+    // 首页固定标签 + 当前页标签（12px；选中 #00B8A0 白字 + 8px 白点；直角）
     void DrawTagsView(World& world, const layout::ShellLayout& shell,
-                      const theme::Palette& colors) {
+                      const theme::Palette& colors, const RouteState* route) {
         if (!ui::BeginFixedWindow("##shell_tags", shell.tagsView)) {
             ui::EndFixedWindow();
             return;
@@ -827,46 +958,86 @@ private:
             return;
         }
         const float smallFont = std::max(10.0f, tokens.baseFontSize - spec::kFontSmallOffset);
-        const char* title = "首页";
-        float titleWidth = 0.0f;
-        {
-            ui::ScopedFontSize tagFont(smallFont);
-            titleWidth = ui::TextSize(title).x;
-        }
-        const float tagWidth = spec::kTagLeftPadding * 2.0f + spec::kTagDotSize +
-                               spec::kTagDotGap + titleWidth;
-        const layout::Rect tag{shell.tagsView.x + spec::kTagFirstLeft,
-                               shell.tagsView.y + (shell.tagsView.h - tagHeight) * 0.5f, tagWidth,
-                               tagHeight};
+        const std::string currentPath = route != nullptr ? route->path : std::string("/index");
+        const bool onHome = (currentPath == "/index" || currentPath.empty());
+        const float tagY = shell.tagsView.y + (shell.tagsView.h - tagHeight) * 0.5f;
+        float cursorX = shell.tagsView.x + spec::kTagFirstLeft;
 
-        const bool tagPressed = ui::InvisibleButtonAt("##tag_home", tag);
-        ui::Fill(drawList, tag, colors.primary);
-
-        // 选中标签：8px 白点 + 白色文字（首页为固定标签，不画关闭按钮）
-        drawList->AddCircleFilled(
-            ImVec2(tag.x + spec::kTagLeftPadding + spec::kTagDotSize * 0.5f, tag.CenterY()),
-            spec::kTagDotSize * 0.5f, colors.textInverse);
-        {
-            const float textLeft =
-                tag.x + spec::kTagLeftPadding + spec::kTagDotSize + spec::kTagDotGap;
+        // 绘制单个标签；selected=主色底白字白点，否则白底灰字描边
+        const auto drawTag = [&](const char* id, const std::string& title, bool selected) {
             ui::ScopedFontSize tagFont(smallFont);
+            const float textWidth = ui::TextSize(title.c_str()).x;
+            float tagWidth = spec::kTagLeftPadding * 2.0f + textWidth;
+            if (selected) {
+                tagWidth += spec::kTagDotSize + spec::kTagDotGap;
+            }
+            const layout::Rect tag{cursorX, tagY, tagWidth, tagHeight};
+            if (cursorX + tagWidth > shell.tagsView.Right() - spec::kTagFirstLeft) {
+                return;  // 超出标签栏：本期只显示首页 + 当前页，不换行
+            }
+            if (selected) {
+                ui::Fill(drawList, tag, colors.primary);
+            } else {
+                ui::Fill(drawList, tag, colors.tagsView);
+                ui::StrokeRounded(drawList, tag, colors.tagsViewBorder, 0.0f, 1.0f);
+            }
+            float textLeft = tag.x + spec::kTagLeftPadding;
+            if (selected) {
+                drawList->AddCircleFilled(
+                    ImVec2(tag.x + spec::kTagLeftPadding + spec::kTagDotSize * 0.5f,
+                           tag.CenterY()),
+                    spec::kTagDotSize * 0.5f, colors.textInverse);
+                textLeft += spec::kTagDotSize + spec::kTagDotGap;
+            }
             ui::TextLeftMiddle(drawList,
-                                layout::Rect{textLeft, tag.y,
-                                             std::max(0.0f, tag.Right() - textLeft), tag.h},
-                                colors.textInverse, title);
-        }
-        if (tagPressed) {
-            EnqueueNavigate(world, "/index");
+                               layout::Rect{textLeft, tag.y, std::max(0.0f, tag.Right() - textLeft),
+                                            tag.h},
+                               selected ? colors.textInverse : colors.textRegular, title.c_str());
+            if (ui::InvisibleButtonAt(id, tag)) {
+                EnqueueNavigate(world, "/index");
+            }
+            if (ImGui::IsItemHovered() && !selected) {
+                ui::StrokeRounded(drawList, tag, theme::WithAlpha(colors.primary, 0.5f), 0.0f,
+                                  1.0f);
+            }
+            cursorX = tag.Right() + spec::kTagGap;
+        };
+
+        drawTag("##tag_home", "首页", onHome);
+        if (!onHome) {
+            const std::string pageTitle = PageTitleForRoute(route);
+            drawTag("##tag_current", pageTitle, true);
         }
 
         ui::EndFixedWindow();
     }
 };
 
+// -----------------------------------------------------------------------------
+// ToastRenderSystem：统一绘制全局 Toast（ForegroundDrawList，页面只负责 PushToast）
+// 系统顺序排在页面（200）之后，保证消息提示始终位于所有页面/弹窗之上。
+// -----------------------------------------------------------------------------
+class ToastRenderSystem final : public ISystem {
+public:
+    const char* Name() const override { return "ToastRenderSystem"; }
+    SystemPhase Phase() const override { return SystemPhase::Render; }
+
+    void Update(World& world, const FrameContext& /*frame*/) override {
+        auto* toasts = world.TryResource<ui::ToastState>();
+        const WindowState* window = world.TryResource<WindowState>();
+        if (toasts == nullptr || window == nullptr || window->width <= 0 || window->height <= 0) {
+            return;
+        }
+        const layout::Rect area{0.0f, 0.0f, static_cast<float>(window->width),
+                                static_cast<float>(window->height)};
+        ui::DrawToasts(area, *toasts, window->deltaTime);
+    }
+};
+
 }  // namespace
 
 void RegisterShellModule(World& world, SystemScheduler& scheduler) {
-    // 外壳私有表现状态（菜单展开/滚动）作为 World 资源注册，测试与多实例友好
+    // 外壳私有表现状态（菜单展开/滚动/路由变化）作为 World 资源注册，测试与多实例友好
     world.EmplaceResource<ShellUiState>();
 
     // 一级菜单实体（数据来自 MenuCatalog；渲染层只读）
@@ -885,6 +1056,7 @@ void RegisterShellModule(World& world, SystemScheduler& scheduler) {
         }
     }
     scheduler.Add(std::make_unique<ShellRenderSystem>(), 100);
+    scheduler.Add(std::make_unique<ToastRenderSystem>(), 300);
 }
 
 }  // namespace zzyl

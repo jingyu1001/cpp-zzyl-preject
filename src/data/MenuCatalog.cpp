@@ -14,10 +14,12 @@ MenuEntry Item(std::string title, std::string icon, std::string route) {
 }  // namespace
 
 MenuCatalog BuildDefaultMenuCatalog() {
-    // 依据：Web 端 admin 账号 /getRouters 实际菜单（见 Web架构提取 §4.4、UI复刻规格 §4.2）
+    // 依据 Web功能清单_v0.2.md §1（admin 账号 2026-11-24 实测菜单树）。
+    // Sprint 2 可达页面：首页 / 系统管理-用户管理 / 在住管理-房型设置 / 服务管理-护理项目；
+    // 其余菜单项本期显示但点击提示"后续迭代接入"（Route 未收录）。
     MenuCatalog catalog;
 
-    // 0. 首页（静态路由 /index，affix 标签，不可关闭）
+    // 0. 首页
     catalog.roots.push_back(Item("首页", "dashboard", "/index"));
 
     // 1. 中州智询
@@ -31,22 +33,22 @@ MenuCatalog BuildDefaultMenuCatalog() {
     // 2. 来访管理
     {
         MenuEntry group = Item("来访管理", "visit", "/appointment");
-        group.children.push_back(Item("预约信息", "calendar", "/appointment/comeVisit"));
+        group.children.push_back(Item("预约信息", "calendar", "/appointment/reservation"));
         catalog.roots.push_back(std::move(group));
     }
 
     // 3. 入退管理
     {
         MenuEntry group = Item("入退管理", "checkinout", "/enterQuit");
-        group.children.push_back(Item("入住办理", "checkin", "/enterQuit/enterDetails"));
+        group.children.push_back(Item("入住办理", "checkin", "/enterQuit/checkIn"));
         catalog.roots.push_back(std::move(group));
     }
 
     // 4. 在住管理
     {
         MenuEntry group = Item("在住管理", "livein", "/liveIn");
-        group.children.push_back(Item("房型设置", "room", "/liveIn/roomType"));
-        group.children.push_back(Item("床位预览", "bed", "/liveIn/houseType"));
+        group.children.push_back(Item("房型设置", "room", "/liveIn/houseSet"));
+        group.children.push_back(Item("床位预览", "bed", "/liveIn/floor"));
         catalog.roots.push_back(std::move(group));
     }
 
@@ -80,8 +82,8 @@ MenuCatalog BuildDefaultMenuCatalog() {
         group.children.push_back(Item("字典管理", "dict", "/system/dict"));
         group.children.push_back(Item("参数设置", "config", "/system/config"));
         group.children.push_back(Item("通知公告", "notice", "/system/notice"));
-        group.children.push_back(Item("操作日志", "operlog", "/monitor/operlog"));
-        group.children.push_back(Item("登录日志", "loginlog", "/monitor/logininfor"));
+        group.children.push_back(Item("操作日志", "operlog", "/system/log/operlog"));
+        group.children.push_back(Item("登录日志", "loginlog", "/system/log/logininfor"));
         catalog.roots.push_back(std::move(group));
     }
 

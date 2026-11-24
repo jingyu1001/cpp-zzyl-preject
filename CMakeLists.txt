@@ -105,24 +105,33 @@ set(ZZYL_APP_SOURCES
     src/platform/ImGuiLayer.cpp
     src/platform/Screenshot.cpp
 
-    # 布局 / 主题 / 绘制工具
+    # 布局 / 主题 / 绘制工具 / 图片纹理（WIC）
     src/layout/Layout.cpp
     src/render/Theme.cpp
     src/render/UiDraw.cpp
+    src/render/Texture.cpp
 
-    # 数据层（接口 + Mock 实现 + 菜单目录）
+    # 数据层（接口 + Mock 实现 + 菜单目录 + Sprint2 种子数据服务）
     src/data/MockServices.cpp
     src/data/MenuCatalog.cpp
+    src/data/SeedServices.cpp
 
     # 应用层
     src/app/App.cpp
     src/app/Systems.cpp
+    src/app/Routes.cpp
     src/app/ModuleRegistry.cpp
+
+    # 通用组件（cpp-dev1）
+    src/ui/Widgets.cpp
 
     # 模块（按文件归属拆给 3 名程序员）
     src/shell/ShellModule.cpp        # cpp-dev1
     src/pages/LoginModule.cpp        # cpp-dev2
+    src/pages/SystemUserModule.cpp   # cpp-dev2（Sprint 2 M1）
     src/pages/DashboardModule.cpp    # cpp-dev3
+    src/pages/RoomTypeModule.cpp     # cpp-dev3（Sprint 2 M2）
+    src/pages/NursingProjectModule.cpp  # cpp-dev3（Sprint 2 M3）
 )
 
 add_executable(zzyl_desktop ${ZZYL_APP_SOURCES})
@@ -138,6 +147,20 @@ target_link_libraries(zzyl_desktop PRIVATE
     gdi32
     shell32
     ole32
+    windowscodecs   # WIC 图片解码（Sprint 2；Windows 系统组件，无第三方依赖）
+)
+
+# 资源根目录（Texture::ResolveAssetPath 的兜底候选）
+target_compile_definitions(zzyl_desktop PRIVATE
+    ZZYL_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+
+# 运行期资源目录：把 assets/ 复制到 exe 旁边（图标 / 图片）
+add_custom_command(TARGET zzyl_desktop POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/assets"
+        "$<TARGET_FILE_DIR:zzyl_desktop>/assets"
+    COMMENT "复制 assets/ 到输出目录"
 )
 
 set_target_properties(zzyl_desktop PROPERTIES

@@ -17,21 +17,19 @@
 #include <string>
 #include <vector>
 
+#include "zzyl/app/Routes.h"
 #include "zzyl/core/World.h"
+#include "zzyl/data/BusinessServices.h"
 #include "zzyl/data/Model.h"
 #include "zzyl/data/Services.h"
 #include "zzyl/layout/Layout.h"
 
 namespace zzyl {
 
-// ---- 路由（本迭代仅登录页与首页；后续按菜单扩展） ----
-enum class Route {
-    Login,
-    Dashboard,
-};
-
+// 当前路由（页面由 Route 枚举标识；path 由 RouteSystem 每帧根据 Route 归一化）
 struct RouteState {
     Route current = Route::Login;
+    std::string path = "/login";
 };
 
 // 当前登录会话（未登录时 loggedIn=false）
@@ -89,6 +87,10 @@ struct CommandQueue {
 struct DataServices {
     std::unique_ptr<data::IAuthService> auth;
     std::unique_ptr<data::IDashboardService> dashboard;
+    // Sprint 2 业务数据（内存种子实现；Sprint 3 可换 SQLite 实现）
+    std::unique_ptr<data::IUserService> user;
+    std::unique_ptr<data::IRoomTypeService> roomType;
+    std::unique_ptr<data::INursingProjectService> nursingProject;
 };
 
 // 看板数据快照资源（由 DataBootstrapSystem 加载，渲染层只读）

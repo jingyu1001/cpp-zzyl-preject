@@ -22,6 +22,7 @@
 #include "zzyl/layout/Layout.h"
 #include "zzyl/platform/ImGuiLayer.h"
 #include "zzyl/platform/Window.h"
+#include "zzyl/render/Texture.h"
 
 namespace zzyl {
 
@@ -34,7 +35,7 @@ public:
         bool selftest = false;       // 自测模式：自动截图/缩放/全屏并退出
         bool autoLogin = false;      // 启动后自动用 Mock 账号登录（演示/自测）
         std::string selftestDir;     // 截图与 metrics.json 输出目录
-        int selftestFrames = 16;     // 自测运行帧数上限（保护）
+        int selftestFrames = 26;     // 自测运行帧数上限（保护）
     };
 
     int Run(const Options& options);
@@ -48,6 +49,8 @@ private:
     bool CaptureScreenshot(const std::string& name);
     void WriteSelfTestReport();
     void ForceLoginForSelfTest();
+    void QueueNavigateForSelfTest(const char* path);
+    void DrawSelfTestTexturePreview();  // Sprint 2：WIC 纹理自检（自测第 22 帧绘制）
     bool EnsureSelfTestDirectory();
 
     struct CaptureRecord {
@@ -77,6 +80,9 @@ private:
     // 命令队列时序回归测试（自测用：帧末入队 → 下一帧 Simulation 消费）
     bool m_commandQueuedForTest = false;
     bool m_commandQueueTimingOk = false;
+    // Sprint 2：WIC 纹理自检（assets/icons 素材图）
+    render::Texture m_selftestIcon;
+    bool m_selftestIconReady = false;
     int m_loginRouteSeen = 0;
     int m_dashboardRouteSeen = 0;
 };
